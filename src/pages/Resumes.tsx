@@ -112,7 +112,7 @@ export default function Resumes() {
         // LOG: Extraction Success
         await supabase.from('agent_logs').insert({
           type: 'match',
-          level: 'success',
+          level: 'info',
           message: `[INTEL AGENT] Successfully extracted profile for ${parsedData.name || 'candidate'}. Identified ${parsedData.skills?.length || 0} core skills and ${parsedData.experience || 'unknown'} tenure.`,
           metadata: { resumeId: resumeData.id, candidateName: parsedData.name, skills: parsedData.skills }
         });

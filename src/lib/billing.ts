@@ -30,7 +30,7 @@ export async function logBillingEvent(event: BillingEvent) {
       result: { value: event.value_generated },
       message: `[BILLING] Generated $${event.value_generated} in automation value via ${event.action_type}`,
       type: 'system',
-      level: 'success'
+      level: 'info'
     });
 
   } catch (err) {

@@ -327,6 +327,19 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='offer_success_score') THEN
       ALTER TABLE shortlist ADD COLUMN offer_success_score INT;
     END IF;
+    -- Adding Decision Engine Columns
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='decision') THEN
+      ALTER TABLE shortlist ADD COLUMN decision TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='risk') THEN
+      ALTER TABLE shortlist ADD COLUMN risk INT DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='confidence') THEN
+      ALTER TABLE shortlist ADD COLUMN confidence FLOAT DEFAULT 0;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='reasons') THEN
+      ALTER TABLE shortlist ADD COLUMN reasons TEXT[];
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='prediction_summary') THEN
       ALTER TABLE shortlist ADD COLUMN prediction_summary TEXT;
     END IF;
@@ -505,6 +518,13 @@ CREATE POLICY "Messages access" ON whatsapp_messages FOR ALL USING (true);
 -- Ensure agent_logs has all autonomous agency columns
 DO $$ 
 BEGIN 
+  -- Ensure agent_logs has proper RLS
+  ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
+  DROP POLICY IF EXISTS "Allow all inserts on agent_logs" ON agent_logs;
+  CREATE POLICY "Allow all inserts on agent_logs" ON agent_logs FOR INSERT WITH CHECK (true);
+  DROP POLICY IF EXISTS "Allow select on agent_logs" ON agent_logs;
+  CREATE POLICY "Allow select on agent_logs" ON agent_logs FOR SELECT USING (true);
+
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='agent_logs' AND column_name='agent_name') THEN
     ALTER TABLE agent_logs ADD COLUMN agent_name TEXT;
   END IF;

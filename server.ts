@@ -151,7 +151,7 @@ async function startServer() {
         // 3. LOG OUTBOUND REPLY
         await supabase.from('agent_logs').insert({
           type: 'outreach',
-          level: 'success',
+          level: 'info',
           message: `[WHATSAPP BRAIN-REPLY] To +${from}: "${replyText.slice(0, 50)}..."`,
           metadata: { 
             channel: 'whatsapp', 

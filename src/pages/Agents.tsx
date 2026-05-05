@@ -69,7 +69,7 @@ export default function Agents() {
         const { error } = await supabase.from('agent_logs').insert({
           type: agentId,
           message: `${insight}`,
-          level: 'success',
+          level: 'info',
           status: 'success',
           metadata: { triggered_at: new Date().toISOString() }
         });

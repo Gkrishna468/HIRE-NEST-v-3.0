@@ -127,7 +127,11 @@ export default function AIMatching() {
             gaps: evaluation.gaps,
             matchedSkills: evaluation.matchedSkills || [],
             missingSkills: evaluation.missingSkills || [],
-            recommendation: evaluation.recommendation
+            recommendation: evaluation.recommendation,
+            decision: (evaluation as any).decision,
+            risk: (evaluation as any).risk,
+            confidence: (evaluation as any).confidence,
+            reasons: (evaluation as any).reasons
           };
         } catch (err) {
           return { ...c, score: 0, reasoning: 'Evaluation failed' };
@@ -173,6 +177,10 @@ export default function AIMatching() {
         job_id: selectedJob.id,
         candidate_id: String(match.id),
         score: match.score,
+        decision: match.decision,
+        risk: match.risk,
+        confidence: match.confidence,
+        reasons: match.reasons,
         interview_score: salesPrediction.offer_success, // Using offer success as proxy for readiness
         hiring_probability: salesPrediction.hiring_probability,
         offer_success_score: salesPrediction.offer_success,
@@ -347,12 +355,33 @@ export default function AIMatching() {
                              )}>
                                {match.source === 'crm' ? 'CRM Profile' : 'New Resume'}
                              </span>
+                             {match.decision && (
+                               <span className={cn(
+                                 "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest",
+                                 match.decision === 'HIRE' ? "bg-green-100 text-green-700" : 
+                                 match.decision === 'CONSIDER' ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                               )}>
+                                 {match.decision}
+                               </span>
+                             )}
                           </div>
                           <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500 font-medium">
                             <span className="flex items-center gap-1">
                               <Clock className="w-3.5 h-3.5" />
                               {match.yearsExperience || match.experience} yrs exp
                             </span>
+                            {match.risk !== undefined && (
+                              <span className="flex items-center gap-1">
+                                <AlertCircle className={cn("w-3.5 h-3.5", match.risk > 50 ? "text-red-500" : "text-amber-500")} />
+                                Risk: {match.risk}%
+                              </span>
+                            )}
+                            {match.confidence !== undefined && (
+                              <span className="flex items-center gap-1">
+                                <BrainCircuit className="w-3.5 h-3.5 text-indigo-400" />
+                                Confidence: {match.confidence}%
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -393,11 +422,30 @@ export default function AIMatching() {
                       </div>
 
                       {match.reasoning && (
-                        <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex gap-3">
-                          <BrainCircuit className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-                          <p className="text-sm text-slate-600 leading-relaxed">
-                            {match.reasoning}
-                          </p>
+                        <div className="mt-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-3">
+                          <div className="flex items-start gap-3">
+                            <BrainCircuit className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-900 mb-1">Neural Matching Analysis</p>
+                              <p className="text-sm text-slate-600 leading-relaxed italic">
+                                "{match.reasoning}"
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {match.reasons && (
+                            <div className="mt-2 pt-3 border-t border-slate-200">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Strategic Justification</p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {match.reasons.map((r: string, i: number) => (
+                                  <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                                    {r}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 

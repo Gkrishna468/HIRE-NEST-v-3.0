@@ -172,7 +172,7 @@ export default function IntelligenceCenter() {
         // Log to Agent Logs
         await supabase.from('agent_logs').insert({
           type: 'neural_review',
-          level: 'success',
+          level: 'info',
           agent_name: 'Nestor Brain',
           message: `Generated 1-page Neural Review for ${candidate.name}`,
           metadata: { candidateId: candidate.id }
@@ -320,7 +320,7 @@ export default function IntelligenceCenter() {
           
           await supabase.from('agent_logs').insert({
             type: 'match',
-            level: 'success',
+            level: 'info',
             agent_name: 'Nestor Brain',
             message: `[NEURAL MATCH] Automated 88%+ match found! Candidate: ${candidate.name} -> Job: ${job.title} (${score}%)`,
             metadata: { jobId: job.id, candidateId: candidate.id, score, recipient: candidate.name, jobTitle: job.title }

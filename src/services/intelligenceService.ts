@@ -207,31 +207,56 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
       missingSkills: result.missingSkills?.length > 0 ? result.missingSkills : job.skills?.filter((s: string) => !matched.includes(normalize(s))) || []
     } as any;
 
+    // 2.5 Decision Engine Layer
+    const decision = decisionEngine({
+      score: finalScore,
+      matchedSkills: matchResult.matchedSkills || [],
+      missingSkills: matchResult.missingSkills || [],
+      experienceYears: parseInt(candidate.experience) || 0,
+      minExperience: job.min_experience || 0,
+      dataQuality: candidate.skills?.length > 0 ? 0.9 : 0.4
+    });
+
+    matchResult = { ...matchResult, ...decision } as any;
+
     // 3. Update Cache
     if (job.id && candidate.id) {
       await supabase.from('match_results').upsert({
         job_id: job.id,
         candidate_id: candidate.id,
         score: finalScore,
-        matched_skills: matched,
-        missing_skills: jobSkills.filter(s => !matched.includes(s)),
+        matched_skills: matchResult.matchedSkills,
+        missing_skills: matchResult.missingSkills,
         explanation: result.reasoning,
         metadata: { 
           latency_ms: Date.now() - startTime,
-          model: 'gemini-1.5-pro'
+          model: 'gemini-1.5-pro',
+          decision: decision.decision,
+          risk: decision.risk
         }
       }, { onConflict: 'job_id, candidate_id' });
     }
 
   } catch (error) {
     console.error("AI Matching Error, triggering heuristic fallback:", error);
+    const fallbackScore = Math.round(skillScore * 0.8 + expMatch * 0.2);
+    const decision = decisionEngine({
+      score: fallbackScore,
+      matchedSkills: matched,
+      missingSkills: jobSkills.filter(s => !matched.includes(s)),
+      experienceYears: parseInt(candidate.experience) || 0,
+      minExperience: job.min_experience || 0,
+      dataQuality: 0.5
+    });
+    
     matchResult = { 
-      score: Math.round(skillScore * 0.8 + expMatch * 0.2), 
+      score: fallbackScore, 
       reasoning: `Matched ${matched.length} key technical nodes. (Heuristic Fallback)`, 
       gaps: jobSkills.filter(s => !matched.includes(s)),
       recommendation: skillScore >= 50 ? 'shortlist' : 'reserve',
       matchedSkills: matched,
-      missingSkills: jobSkills.filter(s => !matched.includes(s))
+      missingSkills: jobSkills.filter(s => !matched.includes(s)),
+      ...decision
     } as any;
   }
 
@@ -453,6 +478,71 @@ export async function generateInterviewQuestions(job: any, candidate: any, match
 /**
  * AI Sales Agent: Strategic Prediction & Hiring Probability.
  */
+/**
+ * Deterministic Decision Engine: Rules-based logic for hiring recommendations.
+ */
+export function decisionEngine(input: any) {
+  const {
+    score,
+    matchedSkills,
+    missingSkills,
+    experienceYears,
+    minExperience,
+    dataQuality = 1.0,
+  } = input;
+
+  // --- 1) Coverage ---
+  const totalReq = matchedSkills.length + missingSkills.length || 1;
+  const coverage = matchedSkills.length / totalReq;
+
+  // --- 2) Experience delta ---
+  const expDelta = experienceYears - minExperience;
+  const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+  // --- 3) Confidence ---
+  const confidence = clamp01(
+    0.5 * (score / 100) +
+    0.3 * coverage +
+    0.2 * clamp01(dataQuality)
+  );
+
+  // --- 4) Risk ---
+  let risk = 0;
+  if (missingSkills.length > 2) risk += 25;
+  if (expDelta < 0) risk += 20;
+  if (dataQuality < 0.6) risk += 20;
+  if (score < 60) risk += 20;
+  risk = Math.min(100, risk);
+
+  // --- 5) Decision ---
+  let decision: 'HIRE' | 'CONSIDER' | 'REJECT';
+  if (score >= 85 && coverage >= 0.7 && expDelta >= 0 && risk < 30) {
+    decision = 'HIRE';
+  } else if (score >= 60 && coverage >= 0.5 && risk < 60) {
+    decision = 'CONSIDER';
+  } else {
+    decision = 'REJECT';
+  }
+
+  // --- 6) Reasons ---
+  const reasons = [
+    `${matchedSkills.length}/${totalReq} required skills matched`,
+    expDelta >= 0
+      ? `Experience meets (+${expDelta} yrs)`
+      : `Experience below (${Math.abs(expDelta)} yrs short)`,
+    missingSkills.length
+      ? `Gaps identified: ${missingSkills.join(", ")}`
+      : "No critical skill gaps",
+  ];
+
+  return {
+    decision,
+    risk,
+    confidence: Math.round(confidence * 100),
+    reasons
+  };
+}
+
 export async function getHiringPrediction(job: any, candidate: any, match: MatchResult): Promise<any> {
   const prompt = `
     Act as a Strategic Hiring Director & Offer Scientist.
