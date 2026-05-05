@@ -539,7 +539,7 @@ CREATE INDEX IF NOT EXISTS idx_emails_direction ON emails(direction);
 
 ALTER TABLE emails ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Emails access" ON emails;
-CREATE POLICY "Emails access" ON emails FOR ALL USING (true); 
+CREATE POLICY "Emails access" ON emails FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 16. Leads Table
 CREATE TABLE IF NOT EXISTS leads (
@@ -568,7 +568,8 @@ CREATE TABLE IF NOT EXISTS processing_cache (
 );
 
 ALTER TABLE processing_cache ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Cache access" ON processing_cache FOR ALL USING (true);
+DROP POLICY IF EXISTS "Cache access" ON processing_cache;
+CREATE POLICY "Cache access" ON processing_cache FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 -- 17. WhatsApp Business Integration
 CREATE TABLE IF NOT EXISTS whatsapp_chats (

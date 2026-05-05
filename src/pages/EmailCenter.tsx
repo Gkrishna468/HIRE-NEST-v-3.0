@@ -41,9 +41,21 @@ export function EmailCenter() {
   const [activeTab, setActiveTab] = useState<'inbox' | 'recruitment' | 'sent' | 'archived'>('inbox');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string>('idle');
+  const [isConnected, setIsConnected] = useState<boolean>(true);
 
   useEffect(() => {
+    async function checkConnection() {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsConnected(!!session?.provider_token);
+      if (session?.provider_token) {
+        handleRefresh();
+      }
+    }
+    
     fetchEmails();
+    checkConnection();
     
     const channel = supabase
       .channel('email_updates')
@@ -57,9 +69,13 @@ export function EmailCenter() {
 
   const fetchEmails = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from('emails')
         .select('*')
+        .eq('user_id', user.id)
         .order('received_at', { ascending: false });
 
       if (error) throw error;
@@ -77,12 +93,16 @@ export function EmailCenter() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    setSyncStatus('syncing');
     try {
       const { syncGmailInbox } = await import('@/services/gmailService');
       const result = await syncGmailInbox();
+      setLastSynced(new Date().toLocaleTimeString());
+      setSyncStatus('success');
       toast.success(result.message);
       await fetchEmails();
     } catch (err: any) {
+      setSyncStatus('failed');
       toast.error(err.message || 'Sync failed');
     } finally {
       setIsRefreshing(false);
@@ -282,13 +302,63 @@ export function EmailCenter() {
               <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Neural Sync Active</span>
             </div>
+          ) : !isConnected ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center h-full">
+              <div className="w-16 h-16 bg-red-50 rounded-3xl flex items-center justify-center mb-4 text-red-500">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <p className="text-sm font-bold text-slate-900">Gmail Not Connected</p>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                Connect your account in Settings to sync communications.
+              </p>
+              <a 
+                href="/settings"
+                className="mt-6 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10"
+              >
+                Go to Settings
+              </a>
+            </div>
           ) : filteredThreads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center">
+            <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center mb-4">
                 <Mail className="w-8 h-8 text-slate-200" />
               </div>
-              <p className="text-sm font-bold text-slate-900">Inbox is empty</p>
-              <p className="text-xs text-slate-400 mt-1 leading-relaxed">No signals detected in this channel.</p>
+              <p className="text-sm font-bold text-slate-900">
+                {emails.length > 0 ? 'No signal matches' : 'Inbox is quiet'}
+              </p>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-[200px]">
+                {emails.length > 0 
+                  ? 'Try clearing your search or switching tabs.' 
+                  : 'Syncing your communications hub for neural matching.'}
+              </p>
+              
+              <div className="mt-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 w-full">
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                  <span>Diagnostic Data</span>
+                </div>
+                <div className="space-y-2 text-left">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-400">Sync Status</span>
+                    <span className={`font-bold ${syncStatus === 'failed' ? 'text-red-500' : 'text-emerald-500'}`}>
+                      {syncStatus.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-400">Last Sync</span>
+                    <span className="text-slate-900 font-bold">{lastSynced || 'Never'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-400">Total Signals</span>
+                    <span className="text-slate-900 font-bold">{emails.length} stored</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleRefresh}
+                  className="w-full mt-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-slate-50 transition-all font-bold"
+                >
+                  Force Signal Re-Sync
+                </button>
+              </div>
             </div>
           ) : (
             filteredThreads.map((thread) => (

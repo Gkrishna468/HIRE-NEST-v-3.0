@@ -21,22 +21,35 @@ export async function syncGmailInbox() {
   }
 
   // 1. Fetch recent messages
-  const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10";
+  const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25";
+  console.log("[Gmail Sync] Initiating fetch for user ID:", session?.user?.id);
+  
   const listRes = await fetch(listUrl, {
     headers: { Authorization: `Bearer ${token}` }
   });
   const listData = await listRes.json();
 
+  if (listData.error) {
+    console.error("[Gmail Sync] API Error:", listData.error);
+    throw new Error(`Gmail API failure: ${listData.error.message}`);
+  }
+
   if (!listData.messages || listData.messages.length === 0) {
+    console.log("[Gmail Sync] Inbox is empty or quiet.");
     return { count: 0, message: "Inbox is quiet." };
   }
+
+  console.log(`[Gmail Sync] Found ${listData.messages.length} signals. Analyzing...`);
 
   let syncCount = 0;
 
   for (const msg of listData.messages) {
     // Check cache
     const { data: exist } = await supabase.from('processing_cache').select('id').eq('source_id', msg.id).maybeSingle();
-    if (exist) continue;
+    if (exist) {
+      console.log(`[Gmail Sync] Message ${msg.id} already processed. Skipping.`);
+      continue;
+    }
 
     const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`;
     const detailRes = await fetch(detailUrl, {
@@ -87,8 +100,11 @@ export async function syncGmailInbox() {
     const { html, text } = getBody(email.payload);
     const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
 
-    // Persist email
-    // BUILD UPSERT PAYLOAD
+    if (!session?.user?.id) {
+      console.warn("[Gmail Sync] Session lost during loop. Aborting current message.");
+      continue;
+    }
+
     const emailPayload: any = {
       subject: subject,
       snippet: email.snippet,
@@ -102,19 +118,26 @@ export async function syncGmailInbox() {
       to_email: to,
       direction: 'inbound',
       status: 'received',
-      user_id: session?.user?.id,
+      user_id: session.user.id,
       company_id: profile?.company_id,
       message_header_id: messageHeaderId,
       labels: email.labelIds || []
     };
 
-    const { error } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
+    // Persist email
+    let { error: emailError } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
 
-    if (error) {
-      console.error("[Gmail Sync] Upsert failed. Ensure 'message_id' column exists with Unique constraint.", error);
-      // Fallback: simple insert without conflict handling if table structure is unknown
-      await supabase.from('emails').insert(emailPayload);
+    if (emailError) {
+      console.error("[Gmail Sync] Upsert failed for ID:", msg.id, emailError);
+      // Fallback: simple insert if upsert fails for some dialect reason
+      const { error: insertError } = await supabase.from('emails').insert(emailPayload);
+      if (insertError) {
+        console.error("[Gmail Sync] Fallback insert also failed:", insertError);
+        continue; // Skip this message, don't cache it as processed
+      }
     }
+
+    console.log(`[Gmail Sync] Message ${msg.id} persisted. Triggering AI Enrichment.`);
 
     // 3. ENQUEUE FOR NESTOR AGENT CLASSIFICATION
     // Trigger real AI analysis now to populate the UI metadata
