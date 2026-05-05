@@ -477,36 +477,46 @@ CREATE POLICY "Deal access" ON deals
     job_id IN (SELECT id FROM jobs WHERE company_id IN (SELECT company_id::UUID FROM profiles WHERE id = auth.uid()))
   );
 
--- 15. Emails (Persistent Storage for Ingested Messages)
+-- 15. Emails (Unified Communication Engine)
 CREATE TABLE IF NOT EXISTS emails (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  message_id TEXT UNIQUE, -- Gmail message path ID
+  message_id TEXT UNIQUE, 
   thread_id TEXT,
-  "from" TEXT NOT NULL,
-  sender_email TEXT,
+  from_email TEXT NOT NULL,
+  to_email TEXT,
   subject TEXT,
   body TEXT,
   snippet TEXT,
-  status TEXT DEFAULT 'received', -- received, sent, draft
+  direction TEXT DEFAULT 'inbound', -- 'inbound' or 'outbound'
+  status TEXT DEFAULT 'received',   -- 'received', 'sent', 'draft'
   is_ai BOOLEAN DEFAULT FALSE,
-  ai_metadata JSONB DEFAULT '{}',
+  metadata JSONB DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   received_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Ensure received_at column exists if table was created previously without it
+-- Ensure necessary columns exist in case of partial schema updates
 DO $$ 
 BEGIN 
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='emails' AND column_name='received_at') THEN
-    ALTER TABLE emails ADD COLUMN received_at TIMESTAMPTZ DEFAULT NOW();
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='emails' AND column_name='to_email') THEN
+    ALTER TABLE emails ADD COLUMN to_email TEXT;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='emails' AND column_name='sender_email') THEN
-    ALTER TABLE emails ADD COLUMN sender_email TEXT;
+  
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='direction') THEN
+    ALTER TABLE emails ADD COLUMN direction TEXT DEFAULT 'inbound';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='message_id') THEN
+    ALTER TABLE emails ADD COLUMN message_id TEXT UNIQUE;
   END IF;
 END $$;
 
+CREATE INDEX IF NOT EXISTS idx_emails_thread ON emails(thread_id);
+CREATE INDEX IF NOT EXISTS idx_emails_direction ON emails(direction);
+
 ALTER TABLE emails ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Emails access" ON emails FOR ALL USING (true); -- Simplified for dev
+DROP POLICY IF EXISTS "Emails access" ON emails;
+CREATE POLICY "Emails access" ON emails FOR ALL USING (true); 
 
 -- 16. Leads Table
 CREATE TABLE IF NOT EXISTS leads (

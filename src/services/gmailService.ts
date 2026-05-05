@@ -54,14 +54,14 @@ export async function syncGmailInbox() {
     const emailPayload: any = {
       subject: subject,
       snippet: email.snippet,
-      body: email.snippet, 
-      received_at: email.internalDate ? new Date(parseInt(email.internalDate)).toISOString() : new Date().toISOString()
+      body: email.snippet, // Ideally parse full body from payload
+      received_at: email.internalDate ? new Date(parseInt(email.internalDate)).toISOString() : new Date().toISOString(),
+      thread_id: email.threadId,
+      message_id: msg.id,
+      from_email: senderEmail,
+      direction: 'inbound',
+      status: 'received'
     };
-
-    // Resilient Column Detection (Try to map to known possible column names)
-    // We assume the user creates 'message_id' as unique key
-    emailPayload.message_id = msg.id;
-    emailPayload.from_email = senderEmail;
 
     const { error } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
 
@@ -131,6 +131,63 @@ export async function syncGmailInbox() {
   }
 
   return { count: syncCount, message: `Synced ${syncCount} new messages.` };
+}
+
+/**
+ * SEND EMAIL REPLY via Gmail API
+ */
+export async function sendEmailReply(threadId: string, to: string, subject: string, body: string) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.provider_token;
+
+  if (!token) throw new Error("GMAIL_NOT_CONNECTED");
+
+  // Gmail API expects a base64url encoded string of the raw MIME email
+  const utf8Encode = new TextEncoder();
+  const emailRaw = [
+    `To: ${to}`,
+    `Subject: ${subject.startsWith('Re: ') ? subject : 'Re: ' + subject}`,
+    `In-Reply-To: ${threadId}`,
+    `References: ${threadId}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    '',
+    body
+  ].join('\r\n');
+
+  const encodedEmail = btoa(unescape(encodeURIComponent(emailRaw)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      raw: encodedEmail,
+      threadId: threadId
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+
+  // Persist locally
+  await supabase.from('emails').insert({
+    thread_id: threadId,
+    message_id: data.id,
+    from_email: session?.user?.email || 'me',
+    to_email: to,
+    subject: subject,
+    body: body,
+    direction: 'outbound',
+    status: 'sent',
+    received_at: new Date().toISOString()
+  });
+
+  return data;
 }
 
 export async function syncGmailResumes() {
