@@ -52,7 +52,11 @@ export async function createCandidate(data: Partial<Candidate>) {
     current_title: data.currentTitle || null,
     stage: data.stage || 'sourced',
     vendor_company_id: data.vendorCompanyId || null,
+    vendor_id: data.vendorId || null,
     resume_url: data.resumeUrl || null,
+    raw_text: data.rawText || null,
+    parsed_data: data.parsedData || {},
+    upload_batch_id: data.uploadBatchId || null,
     source: data.source || 'vendor',
     ai_match_score: data.aiMatchScore || 0,
   } as any);
@@ -65,6 +69,11 @@ export async function updateCandidate(id: string, updates: Partial<Candidate>) {
   if (updates.skills !== undefined) payload.skills = updates.skills;
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.stage !== undefined) payload.stage = updates.stage;
+  if (updates.vendorId !== undefined) payload.vendor_id = updates.vendorId;
+  if (updates.resumeUrl !== undefined) payload.resume_url = updates.resumeUrl;
+  if (updates.rawText !== undefined) payload.raw_text = updates.rawText;
+  if (updates.parsedData !== undefined) payload.parsed_data = updates.parsedData;
+  if (updates.neuralReview !== undefined) payload.neuralReview = updates.neuralReview; // already used in UI
   
   return safeUpdate('candidates', id, payload);
 }

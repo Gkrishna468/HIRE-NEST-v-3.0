@@ -123,6 +123,9 @@ export interface Candidate {
   jobId?: string;
   jobTitle?: string;
   resumeUrl?: string;
+  rawText?: string;
+  parsedData?: any;
+  uploadBatchId?: string;
   notes?: string;
   source: string;
   aiMatchScore?: number;

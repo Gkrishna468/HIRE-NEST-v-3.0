@@ -146,6 +146,9 @@ CREATE TABLE IF NOT EXISTS candidates (
   source TEXT DEFAULT 'vendor',
   stage TEXT DEFAULT 'sourced',
   ai_match_score NUMERIC DEFAULT 0,
+  raw_text TEXT,
+  parsed_data JSONB DEFAULT '{}',
+  upload_batch_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
