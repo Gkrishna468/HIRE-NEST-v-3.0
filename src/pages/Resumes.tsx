@@ -58,40 +58,40 @@ export default function Resumes() {
     try {
       for (const file of files) {
         const fileName = `${Date.now()}-${file.name}`;
-        const filePath = `resumes/${fileName}`;
+        const filePath = `uploads/${fileName}`;
 
-      // 1. Upload to Supabase Storage ('resumes' bucket)
-      const { error: uploadError } = await supabase.storage
-        .from('resumes')
-        .upload(filePath, file, { 
-          cacheControl: '3600',
-          upsert: true 
-        });
+        // 1. Upload to Supabase Storage ('resumes' bucket)
+        const { error: uploadError } = await supabase.storage
+          .from('resumes')
+          .upload(filePath, file, { 
+            cacheControl: '3600',
+            upsert: true 
+          });
 
-      if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
+        if (uploadError) throw new Error(`Storage error: ${uploadError.message}`);
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('resumes')
-        .getPublicUrl(filePath);
+        const { data: { publicUrl } } = supabase.storage
+          .from('resumes')
+          .getPublicUrl(filePath);
 
-      // 2. Insert into resumes table
-      console.log('Inserting into resumes table:', { file_name: file.name, url: publicUrl });
-      
-      const insertPayload: any = {
-        file_name: file.name,
-        url: publicUrl,
-        status: 'pending'
-      };
+        // 2. Insert into resumes table
+        console.log('Inserting into resumes table:', { file_name: file.name, url: publicUrl });
+        
+        const { data: userProfile } = await supabase.from('profiles').select('company_id').eq('id', (await supabase.auth.getUser()).data.user?.id).maybeSingle();
 
-      // Only add source if it's likely to exist (avoiding PGRST204 if schema cache is stale)
-      // We assume the schema fix above handles it, but we can be safe
-      insertPayload.source = 'direct';
+        const insertPayload: any = {
+          file_name: file.name,
+          url: publicUrl,
+          status: 'pending',
+          source: 'direct',
+          company_id: userProfile?.company_id
+        };
 
-      const { data: resumeData, error: resumeError } = await supabase
-        .from('resumes')
-        .insert(insertPayload)
-        .select()
-        .single();
+        const { data: resumeData, error: resumeError } = await supabase
+          .from('resumes')
+          .insert(insertPayload)
+          .select()
+          .single();
 
       if (resumeError) throw resumeError;
 

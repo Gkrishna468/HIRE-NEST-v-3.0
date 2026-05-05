@@ -20,7 +20,11 @@ export default function Login() {
 
   useEffect(() => {
     if (user) {
-      navigate('/');
+      if (user.role === 'admin') navigate('/dashboard');
+      else if (user.role === 'vendor' || user.role === 'vendor_manager') navigate('/');
+      else if (user.role === 'client' || user.role === 'client_manager') navigate('/');
+      else if (user.role === 'recruiter') navigate('/');
+      else navigate('/');
     }
   }, [user, navigate]);
 
@@ -30,6 +34,7 @@ export default function Login() {
     try {
       if (typeof signIn === 'function') {
         await signIn(email, password);
+        toast.success('Access Granted. Neural link synchronized.');
       } else {
         throw new Error('Auth system not initialized');
       }
