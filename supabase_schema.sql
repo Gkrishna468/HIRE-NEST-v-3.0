@@ -597,7 +597,12 @@ BEGIN
   -- Ensure status check constraint exists and is up to date
   ALTER TABLE agent_logs DROP CONSTRAINT IF EXISTS agent_logs_status_check;
   ALTER TABLE agent_logs ADD CONSTRAINT agent_logs_status_check 
-    CHECK (status IN ('pending', 'success', 'failed', 'info'));
+    CHECK (status IN ('pending', 'success', 'failed', 'info', 'warning', 'error', 'warn'));
+  
+  -- Flexible level check
+  ALTER TABLE agent_logs DROP CONSTRAINT IF EXISTS agent_logs_level_check;
+  ALTER TABLE agent_logs ADD CONSTRAINT agent_logs_level_check
+    CHECK (level IN ('info', 'success', 'warn', 'warning', 'error', 'critical'));
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='agent_logs' AND column_name='execution_time_ms') THEN
     ALTER TABLE agent_logs ADD COLUMN execution_time_ms INT;
   END IF;

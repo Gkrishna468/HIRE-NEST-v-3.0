@@ -126,7 +126,7 @@ export default function AIMonitor() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <h3 className="font-bold text-lg text-slate-900 mb-6">Inference Throughput (Last 100 Calls)</h3>
-          <div className="h-[300px] w-full">
+          <div className="min-h-[300px] h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={timeSeries}>
                 <defs>
@@ -149,7 +149,7 @@ export default function AIMonitor() {
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <h3 className="font-bold text-lg text-slate-900 mb-6">Status Distribution</h3>
-          <div className="h-[300px] w-full">
+          <div className="min-h-[300px] h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={[
                 { status: 'Success', value: metrics.statusCounts.success, fill: '#10b981' },

@@ -148,8 +148,8 @@ export default function AIMatching() {
         type: 'matching',
         agent_name: 'Neural Matcher',
         message: `Found ${finalMatches.length} matches for ${currentJob.title}.`,
-        level: finalMatches.length > 0 ? 'success' : 'warn',
-        status: 'success'
+        level: 'info',
+        status: finalMatches.length > 0 ? 'success' : 'failed'
       });
 
       setMatches(finalMatches);

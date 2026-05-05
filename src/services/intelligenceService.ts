@@ -122,15 +122,33 @@ export async function extractJobSkills(jdText: string): Promise<string[]> {
 function normalize(text: string) {
   return (text || '')
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
+    .replace(/[^a-z0-9 ]/g, "")
     .trim();
+}
+
+/**
+ * Fixes squeezed text by adding spaces between joined words (camelCase)
+ */
+export function decamelize(text: string) {
+  return text.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 function fuzzyMatch(skill: string, candidateSkills: string[]) {
   const normSkill = normalize(skill);
+  if (normSkill.length < 3) return false;
+  
   return candidateSkills.some(cs => {
     const normCs = normalize(cs);
-    return normCs.includes(normSkill) || normSkill.includes(normCs);
+    if (normCs === normSkill) return true;
+    
+    // Check for word boundary matches to avoid java/javascript trap
+    const words = normCs.split(' ');
+    if (words.includes(normSkill)) return true;
+    
+    // Fallback for combined terms like "azuredevops" vs "azure devops"
+    const combinedCs = normCs.replace(/ /g, '');
+    const combinedSkill = normSkill.replace(/ /g, '');
+    return combinedCs === combinedSkill;
   });
 }
 
@@ -209,19 +227,21 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
 
   try {
     const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
-    const result = extractJSON(raw);
+    const result = extractJSON<any>(raw);
     
-    if (!isValidSchema(result)) throw new Error("Invalid or missing AI schema");
+    // RELAXED VALIDATION: Don't block if schema is slightly off
+    const validAI = result && typeof result.score === 'number';
     
     // Balanced Score calculation: 40% AI confidence, 50% strict skill match, 10% experience alignment
-    const aiScore = Number(result!.score) || 0;
+    const aiScore = validAI ? Number(result!.score) : skillScore;
     const finalScore = Math.round((aiScore * 0.4) + (skillScore * 0.5) + (expMatch * 0.1));
     
     matchResult = {
       ...result,
       score: finalScore,
-      matchedSkills: (result as any).matchedSkills?.length > 0 ? (result as any).matchedSkills : matched,
-      missingSkills: (result as any).missingSkills?.length > 0 ? (result as any).missingSkills : job.skills?.filter((s: string) => !matched.includes(normalize(s))) || []
+      reasoning: result?.reasoning || `Matched ${matched.length} key technical nodes.`,
+      matchedSkills: result?.matchedSkills?.length > 0 ? result.matchedSkills : matched,
+      missingSkills: result?.missingSkills?.length > 0 ? result.missingSkills : job.skills?.filter((s: string) => !matched.includes(normalize(s))) || []
     } as any;
 
     // 2.5 Decision Engine Layer

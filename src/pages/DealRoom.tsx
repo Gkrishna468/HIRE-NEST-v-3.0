@@ -211,7 +211,7 @@ export default function DealRoom() {
                 </div>
               </div>
             </div>
-            <div className="w-full" style={{ height: 300 }}>
+            <div className="w-full min-h-[300px]" style={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={forecastData}>
                   <defs>
