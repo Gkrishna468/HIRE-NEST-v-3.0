@@ -488,12 +488,22 @@ CREATE TABLE IF NOT EXISTS emails (
   from_email TEXT NOT NULL,
   to_email TEXT,
   subject TEXT,
-  body TEXT,
+  body TEXT, -- Legacy body
+  body_html TEXT,
+  body_text TEXT,
   snippet TEXT,
   direction TEXT DEFAULT 'inbound', -- 'inbound' or 'outbound'
   status TEXT DEFAULT 'received',   -- 'received', 'sent', 'draft'
   is_ai BOOLEAN DEFAULT FALSE,
-  metadata JSONB DEFAULT '{}',
+  labels TEXT[] DEFAULT '{}',
+  category TEXT DEFAULT 'general', -- 'general', 'recruitment', 'client', 'vendor'
+  ai_priority INT DEFAULT 0,
+  ai_metadata JSONB DEFAULT '{}',
+  user_id UUID REFERENCES auth.users(id),
+  company_id UUID REFERENCES companies(id),
+  job_id UUID REFERENCES jobs(id),
+  talent_id UUID REFERENCES talent_profiles(id),
+  message_header_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   received_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -501,16 +511,26 @@ CREATE TABLE IF NOT EXISTS emails (
 -- Ensure necessary columns exist in case of partial schema updates
 DO $$ 
 BEGIN 
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='emails' AND column_name='to_email') THEN
-    ALTER TABLE emails ADD COLUMN to_email TEXT;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='emails' AND column_name='body_html') THEN
+    ALTER TABLE emails ADD COLUMN body_html TEXT;
   END IF;
-  
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='direction') THEN
-    ALTER TABLE emails ADD COLUMN direction TEXT DEFAULT 'inbound';
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='body_text') THEN
+    ALTER TABLE emails ADD COLUMN body_text TEXT;
   END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='message_id') THEN
-    ALTER TABLE emails ADD COLUMN message_id TEXT UNIQUE;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='labels') THEN
+    ALTER TABLE emails ADD COLUMN labels TEXT[] DEFAULT '{}';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='category') THEN
+    ALTER TABLE emails ADD COLUMN category TEXT DEFAULT 'general';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ai_priority') THEN
+    ALTER TABLE emails ADD COLUMN ai_priority INT DEFAULT 0;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='user_id') THEN
+    ALTER TABLE emails ADD COLUMN user_id UUID REFERENCES auth.users(id);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='company_id') THEN
+    ALTER TABLE emails ADD COLUMN company_id UUID REFERENCES companies(id);
   END IF;
 END $$;
 

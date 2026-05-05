@@ -47,20 +47,65 @@ export async function syncGmailInbox() {
     const headers = email.payload.headers;
     const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
     const from = headers.find((h: any) => h.name === 'From')?.value || 'Unknown';
+    const to = headers.find((h: any) => h.name === 'To')?.value || '';
+    const messageHeaderId = headers.find((h: any) => h.name === 'Message-ID' || h.name === 'Message-Id')?.value || '';
     const senderEmail = from.match(/<(.+?)>/)?.[1] || from;
+
+    // Helper to extract body
+    const getBody = (payload: any): { html: string; text: string } => {
+      let html = "";
+      let text = "";
+      
+      const decode = (data: string) => {
+        try {
+          return decodeURIComponent(escape(atob(data.replace(/-/g, '+').replace(/_/g, '/'))));
+        } catch (e) {
+          return "";
+        }
+      };
+
+      const parsePart = (part: any) => {
+        if (part.mimeType === 'text/plain' && part.body.data) {
+          text += decode(part.body.data);
+        } else if (part.mimeType === 'text/html' && part.body.data) {
+          html += decode(part.body.data);
+        } else if (part.parts) {
+          part.parts.forEach(parsePart);
+        }
+      };
+
+      if (payload.parts) {
+        payload.parts.forEach(parsePart);
+      } else if (payload.body && payload.body.data) {
+        if (payload.mimeType === 'text/plain') text = decode(payload.body.data);
+        if (payload.mimeType === 'text/html') html = decode(payload.body.data);
+      }
+      
+      return { html, text };
+    };
+
+    const { html, text } = getBody(email.payload);
+    const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
 
     // Persist email
     // BUILD UPSERT PAYLOAD
     const emailPayload: any = {
       subject: subject,
       snippet: email.snippet,
-      body: email.snippet, // Ideally parse full body from payload
+      body: text || email.snippet,
+      body_html: html,
+      body_text: text,
       received_at: email.internalDate ? new Date(parseInt(email.internalDate)).toISOString() : new Date().toISOString(),
       thread_id: email.threadId,
       message_id: msg.id,
       from_email: senderEmail,
+      to_email: to,
       direction: 'inbound',
-      status: 'received'
+      status: 'received',
+      user_id: session?.user?.id,
+      company_id: profile?.company_id,
+      message_header_id: messageHeaderId,
+      labels: email.labelIds || []
     };
 
     const { error } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
@@ -93,6 +138,14 @@ export async function syncGmailInbox() {
        
        const aiMeta = JSON.parse(aiResponse.replace(/```json|```/g, ''));
        
+       // Map intent to category
+       let category = 'general';
+       if (aiMeta.intent === 'candidate_application') category = 'recruitment';
+       else if (aiMeta.intent === 'job_query') category = 'client';
+       else if (aiMeta.intent === 'outreach') category = 'outreach';
+       
+       const aiPriority = aiMeta.score || 0;
+
        // UNIFIED BRAIN: Auto-match against active jobs if this is an application
        if (aiMeta.intent === 'candidate_application') {
          const { data: openJobs } = await supabase.from('jobs').select('*').eq('status', 'open').limit(5);
@@ -118,7 +171,11 @@ export async function syncGmailInbox() {
          }
        }
 
-       await supabase.from('emails').update({ ai_metadata: aiMeta }).eq('message_id', msg.id);
+       await supabase.from('emails').update({ 
+         ai_metadata: aiMeta,
+         category: category,
+         ai_priority: aiPriority
+       }).eq('message_id', msg.id);
     } catch (e) {
       console.error("AI Enrichment and Unified Matching failed", e);
     }
@@ -136,7 +193,7 @@ export async function syncGmailInbox() {
 /**
  * SEND EMAIL REPLY via Gmail API
  */
-export async function sendEmailReply(threadId: string, to: string, subject: string, body: string) {
+export async function sendEmailReply(threadId: string, to: string, subject: string, body: string, inReplyToHeaderId?: string) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.provider_token;
 
@@ -147,12 +204,12 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
   const emailRaw = [
     `To: ${to}`,
     `Subject: ${subject.startsWith('Re: ') ? subject : 'Re: ' + subject}`,
-    `In-Reply-To: ${threadId}`,
-    `References: ${threadId}`,
+    inReplyToHeaderId ? `In-Reply-To: ${inReplyToHeaderId}` : '',
+    inReplyToHeaderId ? `References: ${inReplyToHeaderId}` : '',
     'Content-Type: text/plain; charset="UTF-8"',
     '',
     body
-  ].join('\r\n');
+  ].filter(line => line !== '').join('\r\n');
 
   const encodedEmail = btoa(unescape(encodeURIComponent(emailRaw)))
     .replace(/\+/g, '-')
@@ -175,6 +232,8 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
   if (data.error) throw new Error(data.error.message);
 
   // Persist locally
+  const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+  
   await supabase.from('emails').insert({
     thread_id: threadId,
     message_id: data.id,
@@ -184,6 +243,64 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
     body: body,
     direction: 'outbound',
     status: 'sent',
+    user_id: session?.user?.id,
+    company_id: profile?.company_id,
+    received_at: new Date().toISOString()
+  });
+
+  return data;
+}
+
+/**
+ * SEND NEW EMAIL via Gmail API
+ */
+export async function sendNewEmail(to: string, subject: string, body: string) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.provider_token;
+
+  if (!token) throw new Error("GMAIL_NOT_CONNECTED");
+
+  const emailRaw = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    '',
+    body
+  ].join('\r\n');
+
+  const encodedEmail = btoa(unescape(encodeURIComponent(emailRaw)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      raw: encodedEmail
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+
+  // Persist locally
+  const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+  
+  await supabase.from('emails').insert({
+    thread_id: data.threadId,
+    message_id: data.id,
+    from_email: session?.user?.email || 'me',
+    to_email: to,
+    subject: subject,
+    body: body,
+    direction: 'outbound',
+    status: 'sent',
+    user_id: session?.user?.id,
+    company_id: profile?.company_id,
     received_at: new Date().toISOString()
   });
 
