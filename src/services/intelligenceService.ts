@@ -47,6 +47,10 @@ export interface MatchResult {
   recommendation: 'shortlist' | 'reserve' | 'reject';
   matchedSkills?: string[];
   missingSkills?: string[];
+  decision?: 'HIRE' | 'CONSIDER' | 'REJECT';
+  risk?: number;
+  confidence?: number;
+  reasons?: string[];
 }
 
 /**
@@ -163,6 +167,10 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
   const skillScore = jobSkills.length > 0 ? (matched.length / jobSkills.length) * 100 : 0;
   const expMatch = candidate.experience >= (job.min_experience || 0) ? 100 : 60;
 
+  // AI Validation helper
+  const isValidSchema = (res: any) => 
+    res && typeof res.score === 'number' && Array.isArray(res.matchedSkills) && Array.isArray(res.missingSkills);
+
   const prompt = `
     Act as a Senior Strategic Recruitment Director & Technical QA Chief. 
     Perform a deep neural match.
@@ -194,17 +202,17 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
     const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
     const result = extractJSON(raw);
     
-    if (!result) throw new Error("Empty or invalid AI response");
+    if (!isValidSchema(result)) throw new Error("Invalid or missing AI schema");
     
     // Balanced Score calculation: 40% AI confidence, 50% strict skill match, 10% experience alignment
-    const aiScore = Number(result.score) || 0;
+    const aiScore = Number(result!.score) || 0;
     const finalScore = Math.round((aiScore * 0.4) + (skillScore * 0.5) + (expMatch * 0.1));
     
     matchResult = {
       ...result,
       score: finalScore,
-      matchedSkills: result.matchedSkills?.length > 0 ? result.matchedSkills : matched,
-      missingSkills: result.missingSkills?.length > 0 ? result.missingSkills : job.skills?.filter((s: string) => !matched.includes(normalize(s))) || []
+      matchedSkills: (result as any).matchedSkills?.length > 0 ? (result as any).matchedSkills : matched,
+      missingSkills: (result as any).missingSkills?.length > 0 ? (result as any).missingSkills : job.skills?.filter((s: string) => !matched.includes(normalize(s))) || []
     } as any;
 
     // 2.5 Decision Engine Layer
@@ -227,7 +235,7 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
         score: finalScore,
         matched_skills: matchResult.matchedSkills,
         missing_skills: matchResult.missingSkills,
-        explanation: result.reasoning,
+        explanation: (result as any).reasoning,
         metadata: { 
           latency_ms: Date.now() - startTime,
           model: 'gemini-1.5-pro',
@@ -261,19 +269,23 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
   }
 
   // 4. Log AI Execution for Monitoring
-  await supabase.from('agent_logs').insert({
-    type: 'ai_match_execution',
-    agent_name: 'Neural Matcher',
-    message: `Evaluated ${candidate.name || 'Candidate'} for ${job.title}. Score: ${matchResult.score}%`,
-    level: 'info',
-    status: 'success',
-    metadata: {
-      latency_ms: Date.now() - startTime,
-      jobId: job.id,
-      candidateId: candidate.id,
-      source: job.id && candidate.id ? 'ai_primary' : 'heuristic_only'
-    }
-  });
+  try {
+    await supabase.from('agent_logs').insert({
+      type: 'ai_match_execution',
+      agent_name: 'Neural Matcher',
+      message: `Evaluated ${candidate.name || 'Candidate'} for ${job.title}. Score: ${matchResult.score}% | Decision: ${matchResult.decision || 'N/A'}`,
+      level: 'info',
+      status: 'success',
+      metadata: {
+        latency_ms: Date.now() - startTime,
+        jobId: job.id,
+        candidateId: candidate.id,
+        source: job.id && candidate.id ? 'ai_primary' : 'heuristic_only'
+      }
+    });
+  } catch (logErr) {
+    console.warn("Log failed silently", logErr);
+  }
 
   return matchResult;
 }
@@ -492,8 +504,8 @@ export function decisionEngine(input: any) {
   } = input;
 
   // --- 1) Coverage ---
-  const totalReq = matchedSkills.length + missingSkills.length || 1;
-  const coverage = matchedSkills.length / totalReq;
+  const totalReq = (matchedSkills?.length || 0) + (missingSkills?.length || 0) || 1;
+  const coverage = (matchedSkills?.length || 0) / totalReq;
 
   // --- 2) Experience delta ---
   const expDelta = experienceYears - minExperience;
@@ -508,31 +520,38 @@ export function decisionEngine(input: any) {
 
   // --- 4) Risk ---
   let risk = 0;
-  if (missingSkills.length > 2) risk += 25;
+  if (missingSkills?.length > 2) risk += 25;
   if (expDelta < 0) risk += 20;
   if (dataQuality < 0.6) risk += 20;
   if (score < 60) risk += 20;
   risk = Math.min(100, risk);
 
-  // --- 5) Decision ---
+  // --- 5) Decision Logic ---
   let decision: 'HIRE' | 'CONSIDER' | 'REJECT';
-  if (score >= 85 && coverage >= 0.7 && expDelta >= 0 && risk < 30) {
+  
+  if (score >= 75 && (coverage >= 0.6 || expDelta >= 2) && risk < 35) {
     decision = 'HIRE';
-  } else if (score >= 60 && coverage >= 0.5 && risk < 60) {
+  } else if (score >= 50 && (coverage >= 0.4 || expDelta >= 0) && risk < 65) {
     decision = 'CONSIDER';
   } else {
     decision = 'REJECT';
   }
 
-  // --- 6) Reasons ---
+  // --- Experience Override ---
+  if (experienceYears >= minExperience + 3 && score >= 50 && decision === 'REJECT') {
+    decision = 'CONSIDER';
+  }
+
+  // --- 6) Reasons (Explainability) ---
   const reasons = [
-    `${matchedSkills.length}/${totalReq} required skills matched`,
+    `${matchedSkills?.length || 0}/${totalReq} required skills matched`,
     expDelta >= 0
-      ? `Experience meets (+${expDelta} yrs)`
-      : `Experience below (${Math.abs(expDelta)} yrs short)`,
-    missingSkills.length
-      ? `Gaps identified: ${missingSkills.join(", ")}`
-      : "No critical skill gaps",
+      ? `Experience meets or exceeds requirement (+${expDelta} yrs)`
+      : `Experience below requirement (${Math.abs(expDelta)} yrs short)`,
+    missingSkills?.length
+      ? `Critical gaps: ${missingSkills.slice(0, 3).join(", ")}`
+      : "Full technical alignment identified",
+    `Confidence factor: ${Math.round(confidence * 100)}%`
   ];
 
   return {

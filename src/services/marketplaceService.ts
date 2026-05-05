@@ -36,6 +36,7 @@ export async function broadcastJob(jobId: string) {
   await supabase.from('agent_logs').insert({
     type: 'notification',
     level: 'info',
+    status: 'success',
     message: `[OUTREACH AGENT] Neural broadcast initiated for "${job.title}". Notifying vendor ecosystem.`,
     metadata: { jobId, broadcast: true, channel: 'system' }
   });
@@ -47,7 +48,8 @@ export async function broadcastJob(jobId: string) {
       
       await supabase.from('agent_logs').insert({
         type: 'outreach',
-        level: 'success',
+        level: 'info',
+        status: 'success',
         message: `[WHATSAPP AGENT] Broadcast notification sent to Vendor: ${vendor.name}`,
         metadata: { jobId, channel: 'whatsapp', status: 'sent', recipient: vendor.name, content: msg }
       });

@@ -37,7 +37,8 @@ export async function sendAgreement(params: AgreementParams) {
   
   await supabase.from('agent_logs').insert({
     type: 'notification',
-    level: 'success',
+    level: 'info',
+    status: 'success',
     message: `[WHATSAPP AGENT] Secure partnership link for ${params.type} delivered to ${params.recipientName}. Link: nest.hire/sign/${params.dealId.slice(0,8)}`,
     metadata: { dealId: params.dealId, type: params.type, channel: 'whatsapp' }
   });

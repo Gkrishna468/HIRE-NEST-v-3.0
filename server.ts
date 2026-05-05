@@ -140,6 +140,7 @@ async function startServer() {
         const { data: logData, error: logError } = await supabase.from('agent_logs').insert({
           type: 'outreach',
           level: 'info',
+          status: 'success',
           message: `[WHATSAPP INBOUND] Message from +${from}: "${text}"`,
           metadata: { channel: 'whatsapp', sender: from, content: text }
         }).select();
@@ -152,6 +153,7 @@ async function startServer() {
         await supabase.from('agent_logs').insert({
           type: 'outreach',
           level: 'info',
+          status: 'success',
           message: `[WHATSAPP BRAIN-REPLY] To +${from}: "${replyText.slice(0, 50)}..."`,
           metadata: { 
             channel: 'whatsapp', 

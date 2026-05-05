@@ -39,7 +39,7 @@ export async function runCrew() {
     await supabase.from('agent_logs').insert({
       type: 'crew',
       message: `Mission Complete. Decisions: ${decisionRes} | Responses: ${replyRes} | Knowledge: ${learningRes}`,
-      level: 'success',
+      level: 'info',
       status: 'success',
       metadata: { duration_ms: duration }
     });

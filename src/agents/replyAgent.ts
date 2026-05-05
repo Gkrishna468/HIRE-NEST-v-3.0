@@ -58,7 +58,8 @@ export async function runReplyAgent() {
           await supabase.from('agent_logs').insert({
             type: 'reply',
             message: `AI detected INTERESTED intent from ${log.email}. Auto-updated candidate stage.`,
-            level: 'success'
+            level: 'info',
+            status: 'success'
           });
           
           detections++;
