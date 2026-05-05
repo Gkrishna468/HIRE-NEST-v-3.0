@@ -144,6 +144,7 @@ export interface Resume {
   source: 'direct' | 'gmail' | 'portal';
   url?: string;
   userId?: string;
+  companyId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -281,6 +282,24 @@ export interface UsageLog {
   cost: number;
   metadata?: any;
   created_at: string;
+}
+
+export interface TalentProfile {
+  id: string;
+  companyId?: string;
+  primaryEmail: string;
+  primaryPhone?: string;
+  fullName?: string;
+  skills: string[];
+  experienceYears: number;
+  titles: string[];
+  location?: string;
+  sources: { type: 'resume' | 'crm'; sourceId: string; confidence: number }[];
+  rawText?: string;
+  parsedData?: any;
+  dataQuality: number;
+  lastUpdated: string;
+  createdAt: string;
 }
 
 export interface Shortlist {

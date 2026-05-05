@@ -146,6 +146,15 @@ export default function Resumes() {
 
         if (candidateError) throw candidateError;
         
+        // 5. Talent Graph Integration (Unified Source of Truth)
+        try {
+          const { syncResumeToTalent, syncCandidateToTalent } = await import('@/services/talentService');
+          if (resumeData) await syncResumeToTalent({ ...resumeData, parsedData, extractedText: `File: ${file.name}` });
+          // Note: syncCandidateToTalent would be redundant here as they share same identity data
+        } catch (syncErr) {
+          console.warn("Talent Graph sync failed", syncErr);
+        }
+
         toast.success(`Extracted profile for ${parsedData.name || 'candidate'}!`, { id: toastId });
       } catch (aiErr) {
         console.warn('AI Extraction failed, falling back to basic creation:', aiErr);

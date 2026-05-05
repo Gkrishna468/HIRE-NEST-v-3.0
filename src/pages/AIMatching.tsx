@@ -19,8 +19,14 @@ import {
   AlertCircle,
   RefreshCw,
   BrainCircuit,
-  FileText
+  FileText,
+  User,
+  X,
+  Mail,
+  Phone,
+  ExternalLink
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { scoreCandidateForJob, generateInterviewQuestions, getHiringPrediction } from '@/services/intelligenceService';
@@ -33,6 +39,7 @@ export default function AIMatching() {
   const [resumes, setResumes] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<any>(null);
   const [isMatching, setIsMatching] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [matchThreshold, setMatchThreshold] = useState(50);
@@ -348,7 +355,12 @@ export default function AIMatching() {
                       <div className="flex items-center justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2">
-                             <h4 className="font-bold text-slate-900 text-lg group-hover:text-indigo-600 transition-colors">{match.name}</h4>
+                             <button 
+                               onClick={() => setSelectedMatch(match)}
+                               className="font-bold text-slate-900 text-lg hover:text-indigo-600 transition-colors cursor-pointer text-left"
+                             >
+                               {match.name}
+                             </button>
                              <span className={cn(
                                "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest",
                                match.source === 'crm' ? "bg-slate-100 text-slate-600" : "bg-indigo-100 text-indigo-600"
@@ -487,6 +499,101 @@ export default function AIMatching() {
             </div>
           </div>
         </div>
+        {/* Resume Modal */}
+        {selectedMatch && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white">
+                    <User className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900">{selectedMatch.name}</h3>
+                    <p className="text-sm text-slate-500 font-medium">{selectedMatch.currentTitle || selectedMatch.source === 'crm' ? 'CRM Profile' : 'Resume Source'}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedMatch(null)}
+                  className="p-2 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  <X className="w-6 h-6 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="md:col-span-1 space-y-6">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Identity Signal</p>
+                      <div className="space-y-3">
+                        {selectedMatch.email && (
+                          <div className="flex items-center gap-3 text-sm text-slate-600">
+                            <Mail className="w-4 h-4 text-slate-400" />
+                            {selectedMatch.email}
+                          </div>
+                        )}
+                        {selectedMatch.phone && (
+                          <div className="flex items-center gap-3 text-sm text-slate-600">
+                            <Phone className="w-4 h-4 text-slate-400" />
+                            {selectedMatch.phone}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Neural Profile</p>
+                      <div className="space-y-3">
+                        <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100">
+                          <p className="text-[10px] text-indigo-400 font-bold uppercase mb-1">AI Match Score</p>
+                          <p className="text-2xl font-black text-indigo-700">{selectedMatch.score}%</p>
+                        </div>
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase mb-1">Total Experience</p>
+                          <p className="text-lg font-black text-slate-700">{selectedMatch.yearsExperience || selectedMatch.experience} Years</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 space-y-8">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resume Content</p>
+                      <div className="bg-slate-50 rounded-3xl border border-slate-200 p-6 font-mono text-sm text-slate-600 min-h-[400px] leading-relaxed whitespace-pre-wrap">
+                        {selectedMatch.extractedText || selectedMatch.raw_text || selectedMatch.notes || "No raw resume text available for this profile."}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 bg-slate-50 flex items-center justify-end gap-3">
+                {selectedMatch.url && (
+                  <a 
+                    href={selectedMatch.url} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Source PDF
+                  </a>
+                )}
+                <button 
+                  onClick={() => setSelectedMatch(null)}
+                  className="px-8 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-all"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );

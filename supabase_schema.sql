@@ -264,6 +264,8 @@ CREATE TABLE IF NOT EXISTS resumes (
   extracted_text TEXT,
   extracted_skills TEXT[],
   parsed_data JSONB DEFAULT '{}',
+  raw_text TEXT,
+  parse_status TEXT DEFAULT 'pending',
   processed BOOLEAN DEFAULT FALSE,
   company_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -295,6 +297,56 @@ CREATE TABLE IF NOT EXISTS shortlist (
 CREATE INDEX IF NOT EXISTS idx_shortlist_job_id ON shortlist(job_id);
 CREATE INDEX IF NOT EXISTS idx_shortlist_stage ON shortlist(stage);
 CREATE INDEX IF NOT EXISTS idx_shortlist_score ON shortlist(score);
+
+-- 12. Talent Graph (Unified Talent Intelligence)
+CREATE TABLE IF NOT EXISTS talent_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID REFERENCES companies(id),
+  
+  -- Identity
+  primary_email TEXT UNIQUE,
+  primary_phone TEXT,
+  full_name TEXT,
+  
+  -- Normalized Attributes
+  skills TEXT[] DEFAULT '{}',
+  experience_years INT DEFAULT 0,
+  titles TEXT[] DEFAULT '{}',
+  location TEXT,
+  
+  -- Sources & Provenance
+  sources JSONB DEFAULT '[]', -- [{type: 'resume'|'crm', source_id, confidence}]
+  
+  -- Unified Intelligence
+  raw_text TEXT,
+  parsed_data JSONB DEFAULT '{}',
+  
+  -- Quality & State
+  data_quality FLOAT DEFAULT 0,
+  last_updated TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Linking legacy tables to Talent Graph
+DO $$ 
+BEGIN 
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='resumes' AND column_name='talent_id') THEN
+    ALTER TABLE resumes ADD COLUMN talent_id UUID REFERENCES talent_profiles(id);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='candidates' AND column_name='talent_id') THEN
+    ALTER TABLE candidates ADD COLUMN talent_id UUID REFERENCES talent_profiles(id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='shortlist' AND column_name='talent_id') THEN
+    ALTER TABLE shortlist ADD COLUMN talent_id UUID REFERENCES talent_profiles(id);
+  END IF;
+  
+  -- Enable RLS on talent_profiles
+  ALTER TABLE talent_profiles ENABLE ROW LEVEL SECURITY;
+  DROP POLICY IF EXISTS "Allow all on talent_profiles" ON talent_profiles;
+  CREATE POLICY "Allow all on talent_profiles" ON talent_profiles FOR ALL USING (true);
+END $$;
 
 -- Final patches for existing tables
 DO $$ 
