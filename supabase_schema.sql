@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   full_name TEXT,
   email TEXT,
   company_id UUID REFERENCES companies(id),
-  role TEXT CHECK (role IN ('admin', 'client_manager', 'vendor_manager', 'recruiter')),
+  role TEXT CHECK (role IN ('admin', 'client_manager', 'vendor_manager', 'recruiter', 'vendor', 'client')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
