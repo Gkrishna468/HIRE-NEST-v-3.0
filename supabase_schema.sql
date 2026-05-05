@@ -655,3 +655,142 @@ ALTER TABLE billing_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Billing access" ON billing_events FOR ALL USING (true);
 
 
+-- -------------------------------------------------------------
+-- SAAS MULTI-PORTAL MIGRATION
+-- -------------------------------------------------------------
+
+-- Profiles update
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'recruiter';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS vendor_id UUID REFERENCES vendors(id);
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id);
+
+-- Drop role constraints completely if exists (to avoid collision)
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS role_check;
+
+ALTER TABLE profiles ADD CONSTRAINT role_check CHECK (role IN ('admin', 'recruiter', 'vendor', 'client', 'client_manager', 'vendor_manager'));
+
+-- Candidates update
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS org_id TEXT;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS external_candidate_id TEXT;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id); -- Link to root company
+
+-- Jobs update
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id);
+
+-- Emails update
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS job_id UUID REFERENCES jobs(id);
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS talent_id UUID REFERENCES talent_profiles(id);
+
+-- RLS Helper Functions (Make sure profiles references auth.uid() properly. 'profiles.id' is auth.users(id))
+CREATE OR REPLACE FUNCTION get_my_company_id()
+RETURNS UUID AS $$
+  SELECT company_id FROM profiles WHERE id = auth.uid();
+$$ LANGUAGE SQL STABLE;
+
+CREATE OR REPLACE FUNCTION get_my_role()
+RETURNS TEXT AS $$
+  SELECT role FROM profiles WHERE id = auth.uid();
+$$ LANGUAGE SQL STABLE;
+
+CREATE OR REPLACE FUNCTION get_my_vendor_id()
+RETURNS UUID AS $$
+  SELECT vendor_id FROM profiles WHERE id = auth.uid();
+$$ LANGUAGE SQL STABLE;
+
+CREATE OR REPLACE FUNCTION get_my_client_id()
+RETURNS UUID AS $$
+  SELECT client_id FROM profiles WHERE id = auth.uid();
+$$ LANGUAGE SQL STABLE;
+
+-- Candidates RLS
+DROP POLICY IF EXISTS "Candidates access" ON candidates;
+DROP POLICY IF EXISTS "role_candidates_access" ON candidates;
+ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "role_candidates_access"
+ON candidates
+FOR ALL
+USING (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND (
+    get_my_role() IN ('admin','recruiter')
+    OR (get_my_role() = 'vendor' AND vendor_id = get_my_vendor_id())
+    OR (get_my_role() = 'client') -- read via joins in UI
+  )
+)
+WITH CHECK (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND (
+    get_my_role() IN ('admin','recruiter')
+    OR (get_my_role() = 'vendor' AND vendor_id = get_my_vendor_id())
+  )
+);
+
+-- Jobs RLS
+DROP POLICY IF EXISTS "Jobs access" ON jobs;
+DROP POLICY IF EXISTS "role_jobs_access" ON jobs;
+ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "role_jobs_access"
+ON jobs
+FOR ALL
+USING (
+  (company_id IS NULL OR company_id = get_my_company_id())
+)
+WITH CHECK (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND (
+    get_my_role() IN ('admin','recruiter')
+    OR (get_my_role() = 'client' AND client_id = get_my_client_id())
+  )
+);
+
+-- Talent Profiles RLS
+DROP POLICY IF EXISTS "Talent profiles access" ON talent_profiles;
+DROP POLICY IF EXISTS "role_talent_access" ON talent_profiles;
+DROP POLICY IF EXISTS "role_talent_write" ON talent_profiles;
+DROP POLICY IF EXISTS "role_talent_update" ON talent_profiles;
+ALTER TABLE talent_profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "role_talent_access"
+ON talent_profiles
+FOR SELECT
+USING (company_id IS NULL OR company_id = get_my_company_id());
+
+CREATE POLICY "role_talent_write"
+ON talent_profiles
+FOR INSERT
+WITH CHECK (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND get_my_role() IN ('admin','recruiter','vendor')
+);
+
+CREATE POLICY "role_talent_update"
+ON talent_profiles
+FOR UPDATE
+USING (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND get_my_role() IN ('admin','recruiter','vendor')
+)
+WITH CHECK (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND get_my_role() IN ('admin','recruiter','vendor')
+);
+
+-- Shortlist RLS
+DROP POLICY IF EXISTS "Shortlist access" ON shortlist;
+DROP POLICY IF EXISTS "role_shortlist_access" ON shortlist;
+ALTER TABLE shortlist ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "role_shortlist_access"
+ON shortlist
+FOR ALL
+USING (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND get_my_role() IN ('admin','recruiter','client')
+)
+WITH CHECK (
+  (company_id IS NULL OR company_id = get_my_company_id())
+  AND get_my_role() IN ('admin','recruiter')
+);

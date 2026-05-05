@@ -62,6 +62,7 @@ export default function Jobs() {
     location: '',
     type: 'Full-time',
     openings: 1,
+    budget: '',
     description: '',
     skills: '',
     vendorName: ''
@@ -71,7 +72,8 @@ export default function Jobs() {
 
   // Derived user type
   const isAdmin = user?.role === 'admin' || user?.email === 'gopal@hirenestworkforce.com';
-  const isClient = userProfile?.type === 'client';
+  const isClient = user?.role === 'client' || user?.role === 'client_manager';
+  const isVendor = user?.role === 'vendor' || user?.role === 'vendor_manager';
 
   const handleCreateJob = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +94,7 @@ export default function Jobs() {
         location: '',
         type: 'Full-time',
         openings: 1,
+        budget: '',
         description: '',
         skills: '',
         vendorName: ''
@@ -228,13 +231,15 @@ export default function Jobs() {
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Job Ecosystem</h1>
           <p className="text-slate-500 mt-1">Manage active vacancies, client approvals, and hiring progress.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
-        >
-          <Plus className="w-5 h-5" />
-          Create New Job
-        </button>
+        {!isVendor && (
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
+          >
+            <Plus className="w-5 h-5" />
+            Create New Job
+          </button>
+        )}
       </div>
 
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4">
@@ -553,6 +558,17 @@ export default function Jobs() {
                     <option key={v.id} value={v.company || v.name}>{v.company || v.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">Budget</label>
+                <input
+                  type="text"
+                  value={newJob.budget}
+                  onChange={(e) => setNewJob({...newJob, budget: e.target.value})}
+                  placeholder="e.g. 150000"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all"
+                />
               </div>
 
               <div className="space-y-2 md:col-span-2">

@@ -88,6 +88,25 @@ export default function App() {
             <Route path="/ai-monitor" element={<PrivateRoute><AIMonitor /></PrivateRoute>} />
             <Route path="/activity" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />
             <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+            <Route path="/vendor" element={<Navigate to="/" />} />
+            <Route path="/vendor/dashboard" element={<Navigate to="/" />} />
+            <Route path="/vendor/candidates" element={<Navigate to="/candidates" />} />
+            <Route path="/vendor/jobs" element={<Navigate to="/jobs" />} />
+            <Route path="/vendor/matching" element={<Navigate to="/ai-matching" />} />
+
+            <Route path="/client" element={<Navigate to="/" />} />
+            <Route path="/client/dashboard" element={<Navigate to="/" />} />
+            <Route path="/client/jobs" element={<Navigate to="/jobs" />} />
+            <Route path="/client/matching" element={<Navigate to="/ai-matching" />} />
+            <Route path="/client/shortlist" element={<Navigate to="/pipeline" />} />
+            
+            <Route path="/recruiter" element={<Navigate to="/" />} />
+            <Route path="/recruiter/dashboard" element={<Navigate to="/" />} />
+            <Route path="/recruiter/candidates" element={<Navigate to="/candidates" />} />
+            <Route path="/recruiter/jobs" element={<Navigate to="/jobs" />} />
+            <Route path="/recruiter/matching" element={<Navigate to="/ai-matching" />} />
+            <Route path="/recruiter/pipeline" element={<Navigate to="/pipeline" />} />
+
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
           <Toaster position="top-right" richColors />

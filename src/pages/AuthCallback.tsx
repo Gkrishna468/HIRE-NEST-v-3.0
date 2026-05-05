@@ -30,13 +30,13 @@ export default function AuthCallback() {
             }).eq('id', user.id);
           }
 
-          // Redirect to email if that's where they were headed, or dashboard
-          navigate('/email');
+          // Redirect to home dashboard, where UI handles role-based display
+          navigate('/');
         } else {
           // If no session, wait a bit or try to refresh
           const { data: userRes } = await supabase.auth.getUser();
           if (userRes.user) {
-            navigate('/email');
+            navigate('/');
           } else {
             console.warn("No session found in callback");
             // Only redirect if we've waited a bit

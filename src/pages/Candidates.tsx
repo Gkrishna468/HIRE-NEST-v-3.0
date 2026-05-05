@@ -70,7 +70,8 @@ export default function Candidates() {
   });
 
   const isAdmin = user?.role === 'admin' || user?.email === 'gopal@hirenestworkforce.com';
-  const isVendor = userProfile?.type === 'vendor';
+  const isVendor = user?.role === 'vendor' || user?.role === 'vendor_manager';
+  const isClient = user?.role === 'client' || user?.role === 'client_manager';
 
   async function handleAddCandidate(e: React.FormEvent) {
     e.preventDefault();
@@ -95,7 +96,11 @@ export default function Candidates() {
   async function handleBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    if (!selectedVendorForUpload) {
+    
+    // Automatically set vendor if user is a vendor
+    const activeVendorId = isVendor ? userProfile?.company_id : selectedVendorForUpload;
+
+    if (!activeVendorId && !isVendor) {
       toast.error('Select a vendor before uploading resumes.');
       return;
     }
@@ -122,7 +127,7 @@ export default function Candidates() {
             .insert({
               name: file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
               resume_url: url,
-              vendor_id: selectedVendorForUpload,
+              vendor_id: activeVendorId,
               upload_batch_id: batchId,
               source: 'bulk_upload',
               stage: 'sourced'
@@ -548,23 +553,27 @@ export default function Candidates() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Talent <span className="text-indigo-600">Pool</span></h1>
-          <p className="text-slate-500 mt-1 font-medium italic">"Welcome, Founder. Currently managing {candidates.length} candidate profiles in the secure OS."</p>
+          <p className="text-slate-500 mt-1 font-medium italic">"Welcome, {user?.name || 'User'}. Currently managing {candidates.length} candidate profiles in the secure OS."</p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-900 px-5 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <UploadCloud className="w-5 h-5 text-indigo-600" />
-            Bulk Upload
-          </button>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl"
-          >
-            <Plus className="w-5 h-5" />
-            Onboard Talent
-          </button>
+          {(isAdmin || isVendor || user?.role === 'recruiter') && (
+            <>
+              <button 
+                onClick={() => setIsUploadModalOpen(true)}
+                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-900 px-5 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
+              >
+                <UploadCloud className="w-5 h-5 text-indigo-600" />
+                Bulk Upload
+              </button>
+              <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-2xl font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl"
+              >
+                <Plus className="w-5 h-5" />
+                Onboard Talent
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -585,19 +594,21 @@ export default function Candidates() {
             </div>
             
             <div className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Source Vendor</label>
-                <select 
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all appearance-none"
-                  value={selectedVendorForUpload}
-                  onChange={(e) => setSelectedVendorForUpload(e.target.value)}
-                >
-                  <option value="">-- Choose Vendor Archive --</option>
-                  {safeArray(vendors).map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-              </div>
+              {!isVendor && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Source Vendor</label>
+                  <select 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all appearance-none"
+                    value={selectedVendorForUpload}
+                    onChange={(e) => setSelectedVendorForUpload(e.target.value)}
+                  >
+                    <option value="">-- Choose Vendor Archive --</option>
+                    {safeArray(vendors).map(v => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className={cn(
                 "relative h-48 border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center gap-4 transition-all hover:bg-slate-50 group",
@@ -609,7 +620,7 @@ export default function Candidates() {
                   accept=".pdf,.doc,.docx,.txt"
                   onChange={handleBulkUpload}
                   className="absolute inset-0 opacity-0 cursor-pointer"
-                  disabled={isUploading || !selectedVendorForUpload}
+                  disabled={isUploading || (!selectedVendorForUpload && !isVendor)}
                 />
                 <div className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:scale-110 transition-transform">
                   {isUploading ? <Loader2 className="w-8 h-8 animate-spin" /> : <UploadCloud className="w-8 h-8" />}

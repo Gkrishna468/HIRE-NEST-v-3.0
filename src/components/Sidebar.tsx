@@ -57,16 +57,18 @@ export function Sidebar() {
 
   const filteredNavItems = navItems.filter(item => {
     if (user?.role === 'recruiter') {
-      const allowed = ['Dashboard', 'AI Matching', 'Jobs', 'Candidates', 'Resumes', 'Sign Out', 'Settings', 'Email Center', 'WhatsApp Business'];
-      // User requested: "client requiremts and ai matching and piples lines and candidates from there company and pipelines"
-      // "client requirements" -> Jobs
-      // "ai matching" -> AI Matching
-      // "candidates" -> Candidates
-      // "pipelines" -> Deal Room (Recruiters need to see deals they are working on)
       const recruiterAllowed = ['Dashboard', 'Match Engine', 'Recruiter Pipeline', 'Job Requisitions', 'Candidate Pool', 'Revenue Hub', 'Email Node', 'OS Settings'];
       return recruiterAllowed.includes(item.label);
     }
-    return true;
+    if (user?.role === 'vendor' || user?.role === 'vendor_manager') {
+      const vendorAllowed = ['Dashboard', 'Candidate Pool', 'Job Requisitions', 'Match Engine', 'OS Settings'];
+      return vendorAllowed.includes(item.label);
+    }
+    if (user?.role === 'client' || user?.role === 'client_manager') {
+      const clientAllowed = ['Dashboard', 'Job Requisitions', 'Match Engine', 'Recruiter Pipeline', 'OS Settings'];
+      return clientAllowed.includes(item.label);
+    }
+    return true; // admin sees all
   });
 
   return (
