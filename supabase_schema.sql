@@ -678,6 +678,54 @@ ALTER TABLE candidates ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES compa
 -- Jobs update
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS client_id UUID REFERENCES clients(id);
 
+-- Vendor performance & Marketplace
+ALTER TABLE vendors
+ADD COLUMN IF NOT EXISTS performance_score NUMERIC DEFAULT 0,
+ADD COLUMN IF NOT EXISTS avg_match_score NUMERIC DEFAULT 0,
+ADD COLUMN IF NOT EXISTS placements INT DEFAULT 0,
+ADD COLUMN IF NOT EXISTS submissions INT DEFAULT 0,
+ADD COLUMN IF NOT EXISTS response_time_ms INT DEFAULT 0,
+ADD COLUMN IF NOT EXISTS last_ranked_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'standard';
+
+ALTER TABLE shortlist
+ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ DEFAULT now(),
+ADD COLUMN IF NOT EXISTS stage TEXT DEFAULT 'shortlisted'; 
+
+-- Vendor Jobs Bids
+CREATE TABLE IF NOT EXISTS vendor_bids (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID REFERENCES jobs(id) ON DELETE CASCADE,
+  vendor_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
+  proposed_fee_percent NUMERIC,
+  proposed_guarantee_days INT,
+  estimated_time_to_submit_days INT,
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Bids policies
+ALTER TABLE vendor_bids ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "vendor_bids_access" ON vendor_bids FOR ALL USING (true); -- Simplified for dev
+
+-- Commission Tracking
+CREATE TABLE IF NOT EXISTS commission_tracking (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id UUID REFERENCES jobs(id),
+  candidate_id UUID REFERENCES candidates(id),
+  vendor_id UUID REFERENCES vendors(id),
+  placed_at TIMESTAMPTZ DEFAULT now(),
+  base_salary NUMERIC,
+  fee_percent NUMERIC,
+  commission_amount NUMERIC,
+  status TEXT DEFAULT 'pending_invoice',
+  guarantee_end_date TIMESTAMPTZ
+);
+ALTER TABLE commission_tracking ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "commission_tracking_access" ON commission_tracking FOR ALL USING (true);
+
+
 -- Emails update
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS job_id UUID REFERENCES jobs(id);
 ALTER TABLE emails ADD COLUMN IF NOT EXISTS talent_id UUID REFERENCES talent_profiles(id);

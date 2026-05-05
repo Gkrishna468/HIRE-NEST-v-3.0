@@ -14,13 +14,13 @@ export async function uploadCandidateResume(file: File): Promise<string> {
   const filePath = `resumes/${fileName}`;
 
   const { data, error } = await supabase.storage
-    .from('agreements') // Reusing agreements bucket for simplicity or create 'resumes'
+    .from('resumes')
     .upload(filePath, file);
 
   if (error) throw error;
   
   const { data: { publicUrl } } = supabase.storage
-    .from('agreements')
+    .from('resumes')
     .getPublicUrl(filePath);
 
   return publicUrl;

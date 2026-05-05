@@ -57,15 +57,15 @@ export function Sidebar() {
 
   const filteredNavItems = navItems.filter(item => {
     if (user?.role === 'recruiter') {
-      const recruiterAllowed = ['Dashboard', 'Match Engine', 'Recruiter Pipeline', 'Job Requisitions', 'Candidate Pool', 'Revenue Hub', 'Email Node', 'OS Settings'];
+      const recruiterAllowed = ['Dashboard', 'Match Engine', 'Recruiter Pipeline', 'Job Requisitions', 'Candidate Pool', 'Revenue Hub', 'Marketplace', 'Email Node', 'OS Settings'];
       return recruiterAllowed.includes(item.label);
     }
     if (user?.role === 'vendor' || user?.role === 'vendor_manager') {
-      const vendorAllowed = ['Dashboard', 'Candidate Pool', 'Job Requisitions', 'Match Engine', 'OS Settings'];
+      const vendorAllowed = ['Dashboard', 'Candidate Pool', 'Job Requisitions', 'Marketplace', 'Match Engine', 'OS Settings'];
       return vendorAllowed.includes(item.label);
     }
     if (user?.role === 'client' || user?.role === 'client_manager') {
-      const clientAllowed = ['Dashboard', 'Job Requisitions', 'Match Engine', 'Recruiter Pipeline', 'OS Settings'];
+      const clientAllowed = ['Dashboard', 'Job Requisitions', 'Match Engine', 'Recruiter Pipeline', 'Marketplace', 'OS Settings'];
       return clientAllowed.includes(item.label);
     }
     return true; // admin sees all
