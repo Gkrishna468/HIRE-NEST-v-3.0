@@ -1,0 +1,487 @@
+
+import { z } from "zod";
+import { supabase } from "@/lib/supabase";
+import { recordDeal } from "./financialService";
+import { calculateAdjustedBudget } from "./marketplaceService";
+import { callAISecureProxy } from "@/lib/ai";
+import { extractJSON } from "@/utils/ai";
+
+/**
+ * JOB POSTING: Initial trigger for marketplace
+ */
+export async function processNewJob(job: any) {
+  // 1. Calculate Adjusted Budget (HireNest Margin)
+  const adjustedBudget = await calculateAdjustedBudget(job.company_id, job.budget);
+  
+  // 2. Update Job in DB
+  await supabase
+    .from('jobs')
+    .update({ adjusted_budget: adjustedBudget })
+    .eq('id', job.id);
+
+  // 3. Log System Action
+  await supabase.from('agent_logs').insert({
+    type: 'revenue',
+    level: 'info',
+    status: 'success',
+    message: `[CFO AGENT] Budget adjusted for ${job.title}. Client Gross: ₹${job.budget} -> Vendor Net: ₹${adjustedBudget}`,
+    metadata: { jobId: job.id, gross: job.budget, net: adjustedBudget }
+  });
+}
+
+export interface ParsedResume {
+  name: string;
+  email: string;
+  phone: string;
+  currentTitle: string;
+  skills: string[];
+  experience: string;
+  education: string;
+  summary: string;
+}
+
+export interface MatchResult {
+  score: number;
+  reasoning: string;
+  gaps: string[];
+  recommendation: 'shortlist' | 'reserve' | 'reject';
+  matchedSkills?: string[];
+  missingSkills?: string[];
+}
+
+/**
+ * Parses raw resume text into structured JSON using Gemini 3 Flash
+ */
+export async function parseResumeWithAI(text: string): Promise<ParsedResume> {
+  const prompt = `
+    Analyze the following resume text and extract structured information for a neural recruitment engine.
+    Focus strictly on skills, experience, and professional identity.
+    Return ONLY a JSON object with this structure:
+    {
+      "name": "full name",
+      "email": "email address",
+      "phone": "phone number",
+      "currentTitle": "current or most recent job title",
+      "skills": ["skill1", "skill2"],
+      "experience": "brief summary of total years and key roles",
+      "education": "highest degree and institution",
+      "summary": "professional summary focusing on technical depth"
+    }
+    
+    TEXT:
+    ${text.substring(0, 5000)}
+  `;
+
+  try {
+    const raw = await callAISecureProxy(prompt);
+    const parsed = extractJSON<ParsedResume>(raw);
+    if (!parsed) throw new Error("Failed to parse resume after AI processing.");
+    return parsed;
+  } catch (error) {
+    console.error("AI Parsing Error:", error);
+    return {
+      name: "Unknown",
+      email: "",
+      phone: "",
+      currentTitle: "",
+      skills: [],
+      experience: "",
+      education: "",
+      summary: ""
+    };
+  }
+}
+
+/**
+ * Extracts structured technical skills from a raw Job Description text.
+ */
+export async function extractJobSkills(jdText: string): Promise<string[]> {
+  const prompt = `
+    Extract ONLY a clean list of technical skills and tools from this Job Description.
+    Focus on niche technologies and core frameworks.
+    Ignore soft skills.
+    Return as a simple JSON array: ["skill1", "skill2"]
+    JD: ${jdText}
+  `;
+  try {
+    const raw = await callAISecureProxy(prompt);
+    const parsed = extractJSON<string[]>(raw);
+    return parsed || [];
+  } catch (e) {
+    // Fallback: simple split if AI fails or returns weird format
+    return jdText.split(/[,;\n]/).map(s => s.trim().toLowerCase()).filter(s => s.length > 2 && s.length < 50);
+  }
+}
+
+function normalize(text: string) {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+}
+
+function fuzzyMatch(skill: string, candidateSkills: string[]) {
+  const normSkill = normalize(skill);
+  return candidateSkills.some(cs => {
+    const normCs = normalize(cs);
+    return normCs.includes(normSkill) || normSkill.includes(normCs);
+  });
+}
+
+/**
+ * Neural Matcher: Semantic comparison between Job and Candidate.
+ * Strategic Weights: 60% Skills, 20% Experience, 20% Semantic Alignment.
+ * Includes Caching Layer to minimize AI costs.
+ */
+export async function scoreCandidateForJob(job: any, candidate: any): Promise<MatchResult> {
+  const jobSkills = (job.skills || []).map(normalize);
+  const candSkills = (candidate.skills || []).map(normalize);
+  
+  // 1. Check Cache Layer First
+  if (job.id && candidate.id) {
+    const { data: cached } = await supabase
+      .from('match_results')
+      .select('*')
+      .eq('job_id', job.id)
+      .eq('candidate_id', candidate.id)
+      .maybeSingle();
+
+    if (cached) {
+      return {
+        score: cached.score,
+        reasoning: cached.explanation || "Retrieved from neural cache.",
+        gaps: cached.missing_skills || [],
+        recommendation: cached.score >= 70 ? 'shortlist' : 'reserve',
+        matchedSkills: cached.matched_skills || [],
+        missingSkills: cached.missing_skills || []
+      };
+    }
+  }
+
+  // 2. High-fidelity heuristic pre-score
+  const matched = jobSkills.filter(s => fuzzyMatch(s, candSkills));
+  const skillScore = jobSkills.length > 0 ? (matched.length / jobSkills.length) * 100 : 0;
+  const expMatch = candidate.experience >= (job.min_experience || 0) ? 100 : 60;
+
+  const prompt = `
+    Act as a Senior Strategic Recruitment Director & Technical QA Chief. 
+    Perform a deep neural match.
+    
+    JOB: ${job.title} | Critical Skills: ${jobSkills.join(", ")}
+    CANDIDATE: ${candSkills.join(", ")} | Exp: ${candidate.experience}
+    
+    Return ONLY JSON in this exact format:
+    {
+      "score": number,
+      "reasoning": "string",
+      "gaps": ["string"],
+      "matchedSkills": ["string"],
+      "missingSkills": ["string"],
+      "recommendation": "shortlist" | "reserve"
+    }
+
+    Rules:
+    - Score is 0-100.
+    - matchedSkills MUST be the skills from JD that the candidate has.
+    - missingSkills MUST be the skills from JD that the candidate lacks.
+    - reasoning MUST explain tech overlap or missing nodes.
+  `;
+
+  let matchResult: MatchResult;
+  const startTime = Date.now();
+
+  try {
+    const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
+    const result = extractJSON(raw);
+    
+    if (!result) throw new Error("Empty or invalid AI response");
+    
+    // Balanced Score calculation: 40% AI confidence, 50% strict skill match, 10% experience alignment
+    const aiScore = Number(result.score) || 0;
+    const finalScore = Math.round((aiScore * 0.4) + (skillScore * 0.5) + (expMatch * 0.1));
+    
+    matchResult = {
+      ...result,
+      score: finalScore,
+      matchedSkills: result.matchedSkills?.length > 0 ? result.matchedSkills : matched,
+      missingSkills: result.missingSkills?.length > 0 ? result.missingSkills : job.skills?.filter((s: string) => !matched.includes(normalize(s))) || []
+    } as any;
+
+    // 3. Update Cache
+    if (job.id && candidate.id) {
+      await supabase.from('match_results').upsert({
+        job_id: job.id,
+        candidate_id: candidate.id,
+        score: finalScore,
+        matched_skills: matched,
+        missing_skills: jobSkills.filter(s => !matched.includes(s)),
+        explanation: result.reasoning,
+        metadata: { 
+          latency_ms: Date.now() - startTime,
+          model: 'gemini-1.5-pro'
+        }
+      }, { onConflict: 'job_id, candidate_id' });
+    }
+
+  } catch (error) {
+    console.error("AI Matching Error, triggering heuristic fallback:", error);
+    matchResult = { 
+      score: Math.round(skillScore * 0.8 + expMatch * 0.2), 
+      reasoning: `Matched ${matched.length} key technical nodes. (Heuristic Fallback)`, 
+      gaps: jobSkills.filter(s => !matched.includes(s)),
+      recommendation: skillScore >= 50 ? 'shortlist' : 'reserve',
+      matchedSkills: matched,
+      missingSkills: jobSkills.filter(s => !matched.includes(s))
+    } as any;
+  }
+
+  // 4. Log AI Execution for Monitoring
+  await supabase.from('agent_logs').insert({
+    type: 'ai_match_execution',
+    agent_name: 'Neural Matcher',
+    message: `Evaluated ${candidate.name || 'Candidate'} for ${job.title}. Score: ${matchResult.score}%`,
+    level: 'info',
+    status: 'success',
+    metadata: {
+      latency_ms: Date.now() - startTime,
+      jobId: job.id,
+      candidateId: candidate.id,
+      source: job.id && candidate.id ? 'ai_primary' : 'heuristic_only'
+    }
+  });
+
+  return matchResult;
+}
+
+/**
+ * Resume Parser: Converts raw text into structured candidate nodes.
+ */
+export async function parseResumeText(text: string): Promise<any> {
+  const prompt = `
+    Extract structured candidate data from this resume text.
+    Return ONLY JSON:
+    {
+      "name": "string",
+      "email": "string",
+      "skills": ["skill1", "skill2"],
+      "experience": number,
+      "current_title": "string",
+      "summary": "string"
+    }
+    RESUME: ${text.substring(0, 4000)}
+  `;
+  try {
+    const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
+    if (!raw) return null;
+    const clean = raw.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error("Resume Parsing Error:", e);
+    return null;
+  }
+}
+export async function runDecisionAgent() {
+  // 1. Log Start
+  await supabase.from('agent_logs').insert({
+    type: 'decision',
+    message: 'Autonomous Decision Agent cycle started.',
+    level: 'info',
+    status: 'pending'
+  });
+
+  // 2. Find Pending Candidates
+  const { data: candidates } = await supabase
+    .from('candidates')
+    .select('*')
+    .eq('stage', 'screening');
+
+  if (!candidates || candidates.length === 0) return "No pending candidates in screening.";
+
+  // 3. Find Open Jobs
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('*')
+    .eq('status', 'open');
+
+  if (!jobs || jobs.length === 0) return "No open jobs found.";
+
+  let decisions = 0;
+  let reviews = 0;
+
+  for (const candidate of candidates) {
+    let bestMatch: any = null;
+    
+    for (const job of jobs) {
+       const evaluation = await scoreCandidateForJob(job, candidate);
+       
+       // 3-TIER DECISIONING & GUARDRAILS
+       // Tier 1: Auto-Shortlist (Very high confidence)
+       if (evaluation.recommendation === 'shortlist' && evaluation.score >= 85) {
+         if (!bestMatch || evaluation.score > bestMatch.score) {
+           bestMatch = { job, evaluation, tier: 'auto' };
+         }
+       } 
+       // Tier 2: Human Review Priority
+       else if (evaluation.score >= 70) {
+         reviews++;
+         await supabase.from('candidates').update({
+           stage: 'review',
+           notes: `[AI REVIEW QUEUE] High potential match (${evaluation.score}%). Reasoning: ${evaluation.reasoning}`
+         }).eq('id', candidate.id);
+       }
+    }
+
+    if (bestMatch && bestMatch.tier === 'auto') {
+      // AUTO-MOVE: This is the decision!
+      await supabase.from('candidates').update({
+        stage: 'interview',
+        notes: `[AI AUTONOMOUS DECISION] Auto-Shortlisted for ${bestMatch.job.title}. Match: ${bestMatch.evaluation.score}%. Reasoning: ${bestMatch.evaluation.reasoning}`
+      }).eq('id', candidate.id);
+      
+      // CFO LAYER: Record potential revenue
+      const estimatedValue = 150000; // Mock 15% of annual salary ₹10L
+      await recordDeal(bestMatch.job, candidate, estimatedValue);
+      
+      decisions++;
+    }
+  }
+
+  // 4. Log Completion
+  await supabase.from('agent_logs').insert({
+    type: 'decision',
+    message: `Cycle complete. Processed ${candidates.length} profiles. Auto-Shortlisted: ${decisions} | Flagged for Review: ${reviews}.`,
+    level: 'info',
+    status: 'success'
+  });
+
+  return `Cycle complete. Made ${decisions} decisions.`;
+}
+
+/**
+ * Profiling Engine: Analyzes intent and urgency from raw text.
+ */
+export async function profileClient(text: string): Promise<any> {
+  const prompt = `
+    Analyze this message/interaction and extract recruitment intent.
+    Return JSON:
+    {
+      "intent": "hiring | candidate | vendor | other",
+      "roles": ["role1"],
+      "urgency": "high | medium | low",
+      "budget": "high | mid | low",
+      "summary": "1-sentence summary",
+      "entities": {
+        "name": "Extracted name if any",
+        "company": "Extracted company name if any"
+      }
+    }
+    TEXT: ${text}
+  `;
+  try {
+    const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
+    if (!raw) return { intent: "other", roles: [], urgency: "low", summary: "Analysis failed." };
+    const clean = raw.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    return { intent: "other", roles: [], urgency: "low", summary: "Analysis failed." };
+  }
+}
+
+/**
+ * Pitch Engine: Generates concise, conversion-focused responses.
+ */
+export async function generatePitch(context: any): Promise<string> {
+  const prompt = `
+    Act as a High-Performance AI Recruiter for HireNest.
+    Generate a concise, professional WhatsApp-style pitch/response.
+    CONTEXT: ${JSON.stringify(context)}
+    
+    GUIDELINES:
+    - Max 3 short paragraphs
+    - Include a clear call to action
+    - Mention potential matches if provided
+  `;
+  try {
+    return await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
+  } catch (e) {
+    return "Hi, thank you for reaching out. We are reviewing your requirements and will get back to you shortly.";
+  }
+}
+
+/**
+ * Follow-up Engine: Schedules next actions based on profile.
+ */
+export function decideFollowUp(profile: any): any {
+  if (profile.urgency === "high") {
+    return {
+      schedule: "tomorrow",
+      action: "Direct Call / Priority Follow-up",
+      priority: "high"
+    };
+  }
+  return {
+    schedule: "3 days",
+    action: "Email follow-up",
+    priority: "medium"
+  };
+}
+
+export async function generateInterviewQuestions(job: any, candidate: any, match: MatchResult): Promise<any> {
+  const prompt = `
+    Act as a Senior Technical Interviewer.
+    JOB: ${job.title}
+    MATCH SCORE: ${match.score}%
+    MISSING SKILLS: ${match.missingSkills?.join(", ")}
+    
+    Generate 3 high-impact technical questions to validate the candidate's core expertise and 2 probing questions to explore the missing skills/gaps.
+    Return JSON:
+    {
+      "technical": ["string"],
+      "gaps": ["string"]
+    }
+  `;
+  try {
+    const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
+    if (!raw) throw new Error("Empty AI response");
+    const clean = raw.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    return { technical: ["Explain your architecture approach."], gaps: ["How would you quickly learn niche tools in our JD?"] };
+  }
+}
+
+/**
+ * AI Sales Agent: Strategic Prediction & Hiring Probability.
+ */
+export async function getHiringPrediction(job: any, candidate: any, match: MatchResult): Promise<any> {
+  const prompt = `
+    Act as a Strategic Hiring Director & Offer Scientist.
+    Predict the probability of this candidate being hired and the likelihood of them accepting an offer.
+    JOB: ${job.title}
+    SKILL MATCH: ${match.score}%
+    GAPS: ${match.missingSkills?.join(", ")}
+    EXP: ${candidate.experience} yrs
+    
+    Return JSON:
+    {
+      "hiring_probability": number,
+      "offer_success": number,
+      "summary": "3-sentence strategic justification.",
+      "risk_level": "Low" | "Medium" | "High"
+    }
+  `;
+  try {
+    const raw = await callAISecureProxy(prompt, { model: 'gemini-1.5-pro', useProxy: true });
+    if (!raw) throw new Error("Empty AI response");
+    const clean = raw.replace(/```json|```/g, "").trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    const prob = Math.min(100, Math.max(0, match.score + (candidate.experience > 5 ? 10 : 0)));
+    return { 
+      hiring_probability: prob, 
+      offer_success: 75, 
+      summary: "Prediction based on technical alignment nodes.", 
+      risk_level: prob > 70 ? "Low" : "Medium" 
+    };
+  }
+}
