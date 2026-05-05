@@ -141,6 +141,7 @@ async function startServer() {
           type: 'outreach',
           level: 'info',
           status: 'success',
+          agent_name: 'WhatsApp Inbound',
           message: `[WHATSAPP INBOUND] Message from +${from}: "${text}"`,
           metadata: { channel: 'whatsapp', sender: from, content: text }
         }).select();
@@ -154,6 +155,7 @@ async function startServer() {
           type: 'outreach',
           level: 'info',
           status: 'success',
+          agent_name: 'WhatsApp Brain',
           message: `[WHATSAPP BRAIN-REPLY] To +${from}: "${replyText.slice(0, 50)}..."`,
           metadata: { 
             channel: 'whatsapp', 
@@ -271,7 +273,8 @@ async function startServer() {
             agent_name: "Maintenance Agent",
             message: `Neural link automatically renewed for ${profile.email}`,
             level: "info",
-            status: "success"
+            status: "success",
+            metadata: { email: profile.email }
           });
         }
       }

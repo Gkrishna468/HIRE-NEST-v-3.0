@@ -5,6 +5,7 @@ import { recordDeal } from "./financialService";
 import { calculateAdjustedBudget } from "./marketplaceService";
 import { callAISecureProxy } from "@/lib/ai";
 import { extractJSON } from "@/utils/ai";
+import { safeLog } from "@/utils/logger";
 
 /**
  * JOB POSTING: Initial trigger for marketplace
@@ -20,10 +21,11 @@ export async function processNewJob(job: any) {
     .eq('id', job.id);
 
   // 3. Log System Action
-  await supabase.from('agent_logs').insert({
+  await safeLog({
     type: 'revenue',
     level: 'info',
     status: 'success',
+    agent_name: 'CFO Agent',
     message: `[CFO AGENT] Budget adjusted for ${job.title}. Client Gross: ₹${job.budget} -> Vendor Net: ₹${adjustedBudget}`,
     metadata: { jobId: job.id, gross: job.budget, net: adjustedBudget }
   });
@@ -140,9 +142,12 @@ function fuzzyMatch(skill: string, candidateSkills: string[]) {
 export async function scoreCandidateForJob(job: any, candidate: any): Promise<MatchResult> {
   const jobSkills = (job.skills || []).map(normalize);
   const candSkills = (candidate.skills || []).map(normalize);
+  const experienceYears = candidate.experience_years || parseInt(candidate.experience) || 0;
+  const candidateId = candidate.id;
+  const candidateName = candidate.full_name || candidate.name || 'Candidate';
   
   // 1. Check Cache Layer First
-  if (job.id && candidate.id) {
+  if (job.id && candidateId) {
     const { data: cached } = await supabase
       .from('match_results')
       .select('*')
@@ -157,7 +162,11 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
         gaps: cached.missing_skills || [],
         recommendation: cached.score >= 70 ? 'shortlist' : 'reserve',
         matchedSkills: cached.matched_skills || [],
-        missingSkills: cached.missing_skills || []
+        missingSkills: cached.missing_skills || [],
+        decision: (cached.metadata as any)?.decision,
+        risk: (cached.metadata as any)?.risk,
+        confidence: (cached.metadata as any)?.confidence,
+        reasons: (cached.metadata as any)?.reasons
       };
     }
   }
@@ -165,7 +174,7 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
   // 2. High-fidelity heuristic pre-score
   const matched = jobSkills.filter(s => fuzzyMatch(s, candSkills));
   const skillScore = jobSkills.length > 0 ? (matched.length / jobSkills.length) * 100 : 0;
-  const expMatch = candidate.experience >= (job.min_experience || 0) ? 100 : 60;
+  const expMatch = experienceYears >= (job.min_experience || 0) ? 100 : 60;
 
   // AI Validation helper
   const isValidSchema = (res: any) => 
@@ -220,18 +229,18 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
       score: finalScore,
       matchedSkills: matchResult.matchedSkills || [],
       missingSkills: matchResult.missingSkills || [],
-      experienceYears: parseInt(candidate.experience) || 0,
+      experienceYears: experienceYears,
       minExperience: job.min_experience || 0,
-      dataQuality: candidate.skills?.length > 0 ? 0.9 : 0.4
+      dataQuality: (candidate.skills?.length > 0 ? 0.6 : 0.2) + (candidate.raw_text ? 0.3 : 0)
     });
 
     matchResult = { ...matchResult, ...decision } as any;
 
     // 3. Update Cache
-    if (job.id && candidate.id) {
+    if (job.id && candidateId) {
       await supabase.from('match_results').upsert({
         job_id: job.id,
-        candidate_id: candidate.id,
+        candidate_id: candidateId,
         score: finalScore,
         matched_skills: matchResult.matchedSkills,
         missing_skills: matchResult.missingSkills,
@@ -240,7 +249,9 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
           latency_ms: Date.now() - startTime,
           model: 'gemini-1.5-pro',
           decision: decision.decision,
-          risk: decision.risk
+          risk: decision.risk,
+          confidence: decision.confidence,
+          reasons: decision.reasons
         }
       }, { onConflict: 'job_id, candidate_id' });
     }
@@ -252,7 +263,7 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
       score: fallbackScore,
       matchedSkills: matched,
       missingSkills: jobSkills.filter(s => !matched.includes(s)),
-      experienceYears: parseInt(candidate.experience) || 0,
+      experienceYears: experienceYears,
       minExperience: job.min_experience || 0,
       dataQuality: 0.5
     });
@@ -269,23 +280,19 @@ export async function scoreCandidateForJob(job: any, candidate: any): Promise<Ma
   }
 
   // 4. Log AI Execution for Monitoring
-  try {
-    await supabase.from('agent_logs').insert({
-      type: 'ai_match_execution',
-      agent_name: 'Neural Matcher',
-      message: `Evaluated ${candidate.name || 'Candidate'} for ${job.title}. Score: ${matchResult.score}% | Decision: ${matchResult.decision || 'N/A'}`,
-      level: 'info',
-      status: 'success',
-      metadata: {
-        latency_ms: Date.now() - startTime,
-        jobId: job.id,
-        candidateId: candidate.id,
-        source: job.id && candidate.id ? 'ai_primary' : 'heuristic_only'
-      }
-    });
-  } catch (logErr) {
-    console.warn("Log failed silently", logErr);
-  }
+  await safeLog({
+    type: 'ai_match_execution',
+    agent_name: 'Neural Matcher',
+    message: `Evaluated ${candidateName} for ${job.title}. Score: ${matchResult.score}% | Decision: ${matchResult.decision || 'N/A'}`,
+    level: 'info',
+    status: 'success',
+    metadata: {
+      latency_ms: Date.now() - startTime,
+      jobId: job.id,
+      candidateId: candidateId,
+      source: job.id && candidateId ? 'ai_primary' : 'heuristic_only'
+    }
+  });
 
   return matchResult;
 }
@@ -319,20 +326,21 @@ export async function parseResumeText(text: string): Promise<any> {
 }
 export async function runDecisionAgent() {
   // 1. Log Start
-  await supabase.from('agent_logs').insert({
+  await safeLog({
     type: 'decision',
+    agent_name: 'Decision Agent',
     message: 'Autonomous Decision Agent cycle started.',
     level: 'info',
     status: 'pending'
   });
 
-  // 2. Find Pending Candidates
-  const { data: candidates } = await supabase
-    .from('candidates')
+  // 2. Find Pending Candidates from Talent Graph
+  const { data: talents } = await supabase
+    .from('talent_profiles')
     .select('*')
-    .eq('stage', 'screening');
+    .order('data_quality', { ascending: false });
 
-  if (!candidates || candidates.length === 0) return "No pending candidates in screening.";
+  if (!talents || talents.length === 0) return "No talent profiles found.";
 
   // 3. Find Open Jobs
   const { data: jobs } = await supabase
@@ -345,48 +353,62 @@ export async function runDecisionAgent() {
   let decisions = 0;
   let reviews = 0;
 
-  for (const candidate of candidates) {
+  for (const talent of talents) {
     let bestMatch: any = null;
     
     for (const job of jobs) {
-       const evaluation = await scoreCandidateForJob(job, candidate);
+       const evaluation = await scoreCandidateForJob(job, talent);
        
        // 3-TIER DECISIONING & GUARDRAILS
        // Tier 1: Auto-Shortlist (Very high confidence)
-       if (evaluation.recommendation === 'shortlist' && evaluation.score >= 85) {
+       if (evaluation.decision === 'HIRE' && evaluation.score >= 80) {
          if (!bestMatch || evaluation.score > bestMatch.score) {
            bestMatch = { job, evaluation, tier: 'auto' };
          }
        } 
        // Tier 2: Human Review Priority
-       else if (evaluation.score >= 70) {
+       else if (evaluation.score >= 65) {
          reviews++;
-         await supabase.from('candidates').update({
-           stage: 'review',
-           notes: `[AI REVIEW QUEUE] High potential match (${evaluation.score}%). Reasoning: ${evaluation.reasoning}`
-         }).eq('id', candidate.id);
+         // Link talent to job in shortlist if not exists
+         await supabase.from('shortlist').upsert({
+           job_id: job.id,
+           talent_id: talent.id,
+           score: evaluation.score,
+           decision: evaluation.decision,
+           risk: evaluation.risk,
+           confidence: evaluation.confidence,
+           reasons: evaluation.reasons,
+           stage: 'screening'
+         }, { onConflict: 'job_id, talent_id' });
        }
     }
 
     if (bestMatch && bestMatch.tier === 'auto') {
       // AUTO-MOVE: This is the decision!
-      await supabase.from('candidates').update({
-        stage: 'interview',
-        notes: `[AI AUTONOMOUS DECISION] Auto-Shortlisted for ${bestMatch.job.title}. Match: ${bestMatch.evaluation.score}%. Reasoning: ${bestMatch.evaluation.reasoning}`
-      }).eq('id', candidate.id);
+      await supabase.from('shortlist').upsert({
+        job_id: bestMatch.job.id,
+        talent_id: talent.id,
+        score: bestMatch.evaluation.score,
+        decision: bestMatch.evaluation.decision,
+        risk: bestMatch.evaluation.risk,
+        confidence: bestMatch.evaluation.confidence,
+        reasons: bestMatch.evaluation.reasons,
+        stage: 'interview'
+      }, { onConflict: 'job_id, talent_id' });
       
       // CFO LAYER: Record potential revenue
-      const estimatedValue = 150000; // Mock 15% of annual salary ₹10L
-      await recordDeal(bestMatch.job, candidate, estimatedValue);
+      const estimatedValue = 150000; 
+      await recordDeal(bestMatch.job, talent, estimatedValue);
       
       decisions++;
     }
   }
 
   // 4. Log Completion
-  await supabase.from('agent_logs').insert({
+  await safeLog({
     type: 'decision',
-    message: `Cycle complete. Processed ${candidates.length} profiles. Auto-Shortlisted: ${decisions} | Flagged for Review: ${reviews}.`,
+    agent_name: 'Decision Agent',
+    message: `Cycle complete. Processed ${talents.length} profiles. Auto-Shortlisted: ${decisions} | Flagged for Review: ${reviews}.`,
     level: 'info',
     status: 'success'
   });

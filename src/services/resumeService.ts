@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { parseResumeText } from "./intelligenceService";
+import { syncResumeToTalent } from "./talentService";
+import { safeLog } from "@/utils/logger";
 
 export async function processResumes() {
   // 1. Get unprocessed resumes
@@ -13,27 +15,41 @@ export async function processResumes() {
   let processedCount = 0;
 
   for (const resume of resumes) {
-    if (!resume.extracted_text) continue;
+    if (!resume.extracted_text) {
+       await supabase.from('resumes').update({ parse_status: 'failed', processed: true }).eq('id', resume.id);
+       continue;
+    }
 
     // 2. Parse with AI
     const parsed = await parseResumeText(resume.extracted_text);
     
-    if (parsed) {
-      // 3. Update resume record
-      const { error: updateError } = await supabase
-        .from('resumes')
-        .update({
-          parsed_data: parsed,
-          extracted_skills: parsed.skills,
-          processed: true,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', resume.id);
+    // 3. Update resume record ALWAYS (fallback or success)
+    const { error: updateError } = await supabase
+      .from('resumes')
+      .update({
+        parsed_data: parsed || {},
+        extracted_skills: parsed?.skills || [],
+        processed: true,
+        parse_status: parsed ? 'success' : 'failed',
+        raw_text: resume.extracted_text,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', resume.id);
 
-      if (!updateError) {
-        processedCount++;
-        
-        // 4. (Optional) Auto-convert to candidate for CRM
+    if (!updateError) {
+      processedCount++;
+      
+      // 4. Sync to Talent Graph (Single Source of Truth)
+      const freshResume = { 
+        ...resume, 
+        parsedData: parsed || {}, 
+        extractedSkills: parsed?.skills || [],
+        extractedText: resume.extracted_text 
+      };
+      await syncResumeToTalent(freshResume as any);
+
+      // 5. (Optional) Legacy CRM Sync
+      if (parsed) {
         await supabase.from('candidates').insert({
           name: parsed.name,
           email: parsed.email,
@@ -47,10 +63,11 @@ export async function processResumes() {
   }
 
   // Log action
-  await supabase.from('agent_logs').insert({
+  await safeLog({
     type: 'processing',
-    message: `Bulk processed ${processedCount} resumes into unified talent pool.`,
-    agent_name: 'Recruiter AI',
+    agent_name: 'Resumes Agent',
+    message: `Bulk processed ${processedCount} resumes into Talent Graph.`,
+    level: 'info',
     status: 'success'
   });
 

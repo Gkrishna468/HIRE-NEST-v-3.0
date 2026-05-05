@@ -35,8 +35,8 @@ import { safeArray, safeString } from '@/utils/safe';
 import { toast } from 'sonner';
 
 export default function AIMatching() {
-  const { jobs, candidates } = useData();
-  const [resumes, setResumes] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [talentPool, setTalentPool] = useState<any[]>([]);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [matches, setMatches] = useState<any[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<any>(null);
@@ -44,23 +44,31 @@ export default function AIMatching() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [matchThreshold, setMatchThreshold] = useState(50);
 
-  // Fetch resumes directly to bypass any caching in DataContext
-  const fetchResumes = async () => {
-    const { data } = await supabase.from('resumes').select('*').order('created_at', { ascending: false });
-    if (data) setResumes(data);
+  const fetchTalentGraph = async () => {
+    setIsProcessing(true);
+    try {
+      const { data: jobData } = await supabase.from('jobs').select('*').order('created_at', { ascending: false });
+      const { data: talentData } = await supabase.from('talent_profiles').select('*').order('data_quality', { ascending: false });
+      
+      if (jobData) setJobs(jobData);
+      if (talentData) setTalentPool(talentData);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   React.useEffect(() => {
-    fetchResumes();
+    fetchTalentGraph();
   }, []);
 
   const handleProcessResumes = async () => {
     setIsProcessing(true);
-    const toastId = toast.loading('AI Agent parsing historical resume library...');
+    const toastId = toast.loading('AI Agent parsing historical resume library into talent graph...');
     try {
+      const { processResumes } = await import('@/services/resumeService');
       const result = await processResumes();
-      toast.success(`Processed ${result.count} new resumes into talent pool!`, { id: toastId });
-      await fetchResumes(); // Refresh resume list
+      toast.success(`Unified ${result.count} profiles into Talent Graph!`, { id: toastId });
+      await fetchTalentGraph(); 
     } catch (err) {
       toast.error('Neural processing failed', { id: toastId });
     } finally {
@@ -86,49 +94,34 @@ export default function AIMatching() {
       }
     }
 
-    // 2. Combine structural candidates and unstructured resumes into a UNIFIED TALENT POOL
-    const resumePool = resumes.map(r => ({
-      id: r.id,
-      name: r.file_name?.replace('.pdf', '') || 'Unnamed Candidate',
-      skills: r.extracted_skills || r.parsed_data?.skills || [], // Use new extracted_skills column if present
-      experience: r.parsed_data?.yearsOfExperience || 0,
-      summary: r.extracted_text?.substring(0, 500),
-      source: 'resume_upload',
-      url: r.url
-    }));
-
-    const totalPool = [
-      ...candidates.map(c => ({ 
-        ...c, 
-        source: 'crm', 
-        name: c.name, 
-        skills: Array.isArray(c.skills) ? c.skills : [] 
-      })), 
-      ...resumePool
-    ];
-    
-    if (totalPool.length === 0) {
-      toast.error('No talent pool found (CRM or Resumes).');
+    if (talentPool.length === 0) {
+      toast.error('Talent Graph is empty. Upload resumes first.');
       setIsMatching(false);
       return;
     }
 
-    // Create an agent log
-    await supabase.from('agent_logs').insert({
+    const { safeLog } = await import('@/utils/logger');
+    await safeLog({
       type: 'matching',
-      message: `Neural Engine scanning ${totalPool.length} profiles for: ${currentJob.title}`,
+      agent_name: 'Neural Matcher',
+      message: `Scanning Talent Graph (${talentPool.length} profiles) for: ${currentJob.title}`,
       level: 'info',
       status: 'pending'
     });
 
-    const toastId = toast.loading(`AI Engine evaluating ${totalPool.length} profiles...`);
+    const toastId = toast.loading(`Evaluating ${talentPool.length} talent profiles...`);
 
     try {
-      const res = await Promise.all(totalPool.map(async (c) => {
+      const res = await Promise.all(talentPool.map(async (t) => {
         try {
-          const evaluation = await scoreCandidateForJob(currentJob, c);
+          const evaluation = await scoreCandidateForJob(currentJob, t);
           return {
-            ...c,
+            id: t.id,
+            name: t.full_name || t.primary_email || 'Unnamed Talent',
+            email: t.primary_email,
+            phone: t.primary_phone,
+            skills: t.skills || [],
+            experience: t.experience_years || 0,
             score: evaluation.score,
             reasoning: evaluation.reasoning,
             gaps: evaluation.gaps,
@@ -138,21 +131,24 @@ export default function AIMatching() {
             decision: (evaluation as any).decision,
             risk: (evaluation as any).risk,
             confidence: (evaluation as any).confidence,
-            reasons: (evaluation as any).reasons
+            reasons: (evaluation as any).reasons,
+            raw_text: t.raw_text,
+            sources: t.sources
           };
         } catch (err) {
-          return { ...c, score: 0, reasoning: 'Evaluation failed' };
+          return null;
         }
       }));
 
-      const finalMatches = res
+      const finalMatches = (res.filter(Boolean) as any[])
         .sort((a, b) => b.score - a.score)
-        .filter(c => c.score >= 5);
+        .filter(c => c.score >= matchThreshold);
 
-      await supabase.from('agent_logs').insert({
+      await safeLog({
         type: 'matching',
+        agent_name: 'Neural Matcher',
         message: `Found ${finalMatches.length} matches for ${currentJob.title}.`,
-        level: finalMatches.length > 0 ? 'info' : 'warning',
+        level: finalMatches.length > 0 ? 'success' : 'warn',
         status: 'success'
       });
 
