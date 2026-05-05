@@ -20,11 +20,7 @@ export default function Login() {
 
   useEffect(() => {
     if (user) {
-      if (user.role === 'admin') navigate('/dashboard');
-      else if (user.role === 'vendor' || user.role === 'vendor_manager') navigate('/');
-      else if (user.role === 'client' || user.role === 'client_manager') navigate('/');
-      else if (user.role === 'recruiter') navigate('/');
-      else navigate('/');
+      navigate('/');
     }
   }, [user, navigate]);
 

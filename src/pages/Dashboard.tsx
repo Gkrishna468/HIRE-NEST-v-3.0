@@ -45,8 +45,7 @@ export default function Dashboard() {
   const getWelcomeMessage = () => {
     switch (user?.role) {
       case 'admin': return { title: `Welcome back, ${user.name}`, sub: 'Founding Director • Ecosystem overview and live intelligence feed.' };
-      case 'client_manager': return { title: `Client Portal: ${user.name}`, sub: 'Managing your active requisitions and candidate collaborations.' };
-      case 'vendor_manager': return { title: `Vendor Workspace: ${user.name}`, sub: 'Tracking your submissions and marketplace engagement.' };
+      case 'recruiter': return { title: `Recruiter OS: ${user.name}`, sub: 'Pipeline management and matching center.' };
       default: return { title: `Welcome, ${user?.name}`, sub: 'Hiring Ecosystem Dashboard' };
     }
   };

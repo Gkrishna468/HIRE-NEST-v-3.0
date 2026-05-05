@@ -37,6 +37,16 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 
+import ClientDashboard from './pages/ClientDashboard';
+import VendorDashboard from './pages/VendorDashboard';
+
+function SmartDashboard() {
+  const { user } = useAuth();
+  if (user?.role === 'vendor' || user?.role === 'vendor_manager') return <VendorDashboard />;
+  if (user?.role === 'client' || user?.role === 'client_manager') return <ClientDashboard />;
+  return <Dashboard />;
+}
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   
@@ -67,7 +77,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+            <Route path="/" element={<PrivateRoute><SmartDashboard /></PrivateRoute>} />
             <Route path="/jobs" element={<PrivateRoute><Jobs /></PrivateRoute>} />
             <Route path="/candidates" element={<PrivateRoute><Candidates /></PrivateRoute>} />
             <Route path="/clients" element={<PrivateRoute><Clients /></PrivateRoute>} />
