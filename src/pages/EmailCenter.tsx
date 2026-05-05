@@ -57,12 +57,21 @@ export function EmailCenter() {
     fetchEmails();
     checkConnection();
     
+    // Background Signal Polling (Every 3 minutes)
+    const pollInterval = setInterval(() => {
+      // Need to use a ref or check state if possible, but for simplicity:
+      if (syncStatus !== 'syncing') {
+        handleRefresh();
+      }
+    }, 180000);
+
     const channel = supabase
       .channel('email_updates')
       .on('postgres_changes' as any, { event: '*', table: 'emails' }, () => fetchEmails())
       .subscribe();
 
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, []);
@@ -92,6 +101,7 @@ export function EmailCenter() {
   };
 
   const handleRefresh = async () => {
+    if (isRefreshing) return;
     setIsRefreshing(true);
     setSyncStatus('syncing');
     try {
@@ -338,13 +348,19 @@ export function EmailCenter() {
                 </div>
                 <div className="space-y-2 text-left">
                   <div className="flex justify-between items-center text-[10px]">
+                    <span className="text-slate-400">Gmail Linked</span>
+                    <span className={`font-bold ${isConnected ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {isConnected ? 'YES' : 'NO'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-400">Sync Status</span>
-                    <span className={`font-bold ${syncStatus === 'failed' ? 'text-red-500' : 'text-emerald-500'}`}>
+                    <span className={`font-bold ${syncStatus === 'failed' ? 'text-red-500' : syncStatus === 'syncing' ? 'text-indigo-500' : 'text-emerald-500'}`}>
                       {syncStatus.toUpperCase()}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-400">Last Sync</span>
+                    <span className="text-slate-400">Last Pulse</span>
                     <span className="text-slate-900 font-bold">{lastSynced || 'Never'}</span>
                   </div>
                   <div className="flex justify-between items-center text-[10px]">

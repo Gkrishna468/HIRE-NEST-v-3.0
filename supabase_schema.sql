@@ -541,6 +541,9 @@ ALTER TABLE emails ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Emails access" ON emails;
 CREATE POLICY "Emails access" ON emails FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+-- Ensure unique index on message_id for upsert reliability
+CREATE UNIQUE INDEX IF NOT EXISTS emails_message_id_idx ON emails(message_id);
+
 -- 16. Leads Table
 CREATE TABLE IF NOT EXISTS leads (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

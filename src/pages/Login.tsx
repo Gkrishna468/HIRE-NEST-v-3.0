@@ -50,7 +50,7 @@ export default function Login() {
             access_type: 'offline',
             prompt: 'consent',
           },
-          scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send'
+          scopes: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.send'
         }
       });
       if (error) throw error;

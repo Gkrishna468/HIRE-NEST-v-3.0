@@ -71,22 +71,36 @@ export async function syncGmailInbox() {
       
       const decode = (data: string) => {
         try {
-          return decodeURIComponent(escape(atob(data.replace(/-/g, '+').replace(/_/g, '/'))));
+          // Gmail uses base64url encoding
+          const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
+          const decoded = atob(b64);
+          try {
+            // Attempt UTF-8 decoding
+            return decodeURIComponent(escape(decoded));
+          } catch (e) {
+            // Fallback to raw decoded string if it's not valid UTF-8
+            return decoded;
+          }
         } catch (e) {
+          console.error("[Gmail Sync] Decode failed for fragment", e);
           return "";
         }
       };
 
       const parsePart = (part: any) => {
-        if (part.mimeType === 'text/plain' && part.body.data) {
+        if (part.mimeType === 'text/plain' && part.body?.data) {
           text += decode(part.body.data);
-        } else if (part.mimeType === 'text/html' && part.body.data) {
+        } else if (part.mimeType === 'text/html' && part.body?.data) {
           html += decode(part.body.data);
-        } else if (part.parts) {
+        }
+        
+        // Recurse into subparts
+        if (part.parts) {
           part.parts.forEach(parsePart);
         }
       };
 
+      // Initial entry point for parsing
       if (payload.parts) {
         payload.parts.forEach(parsePart);
       } else if (payload.body && payload.body.data) {
@@ -98,6 +112,9 @@ export async function syncGmailInbox() {
     };
 
     const { html, text } = getBody(email.payload);
+    
+    // Fallback if body extraction failed but snippet exists
+    const finalBodyText = text || email.snippet || "No content extracted.";
     const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
 
     if (!session?.user?.id) {
@@ -107,10 +124,10 @@ export async function syncGmailInbox() {
 
     const emailPayload: any = {
       subject: subject,
-      snippet: email.snippet,
-      body: text || email.snippet,
-      body_html: html,
-      body_text: text,
+      snippet: email.snippet || '',
+      body: finalBodyText,
+      body_html: html || '',
+      body_text: text || '',
       received_at: email.internalDate ? new Date(parseInt(email.internalDate)).toISOString() : new Date().toISOString(),
       thread_id: email.threadId,
       message_id: msg.id,
@@ -125,15 +142,16 @@ export async function syncGmailInbox() {
     };
 
     // Persist email
+    console.log(`[Gmail Sync] Attempting persistence for message: ${msg.id} (${subject})`);
     let { error: emailError } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
 
     if (emailError) {
-      console.error("[Gmail Sync] Upsert failed for ID:", msg.id, emailError);
-      // Fallback: simple insert if upsert fails for some dialect reason
+      console.error("[Gmail Sync] Upsert failed, likely schema mismatch or RLS blockage:", emailError);
+      // Fallback: simple insert
       const { error: insertError } = await supabase.from('emails').insert(emailPayload);
       if (insertError) {
-        console.error("[Gmail Sync] Fallback insert also failed:", insertError);
-        continue; // Skip this message, don't cache it as processed
+        console.error("[Gmail Sync] Hard failure on storage. Skipping message.", insertError);
+        continue;
       }
     }
 
