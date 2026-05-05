@@ -20,7 +20,6 @@ import {
   TrendingUp,
   MessageSquare,
   ShieldCheck,
-  Handshake,
   Globe,
   BrainCircuit,
   Mail,
@@ -32,44 +31,61 @@ import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-const navItems = [
-  { icon: ShieldCheck, label: 'Command Center', path: '/exec-suite' },
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-  { icon: BrainCircuit, label: 'Intelligence OS', path: '/intelligence' },
-  { icon: Mail, label: 'Email Node', path: '/email' },
-  { icon: MessageSquare, label: 'WhatsApp Node', path: '/whatsapp' },
-  { icon: Cpu, label: 'Autonomous Agents', path: '/agents' },
-  { icon: Coins, label: 'Revenue Hub', path: '/deal-room' },
-  { icon: Globe, label: 'Marketplace', path: '/marketplace' },
-  { icon: Briefcase, label: 'Job Requisitions', path: '/jobs' },
-  { icon: Building2, label: 'Strategic Clients', path: '/clients' },
-  { icon: Users, label: 'Candidate Pool', path: '/candidates' },
-  { icon: Truck, label: 'Vendor Network', path: '/vendors' },
-  { icon: Zap, label: 'Match Engine', path: '/ai-matching' },
-  { icon: TrendingUp, label: 'Recruiter Pipeline', path: '/pipeline' },
-  { icon: History, label: 'Activity Logs', path: '/activity' },
-  { icon: Activity, label: 'AI Monitor', path: '/ai-monitor' },
-  { icon: Settings, label: 'OS Settings', path: '/settings' },
+function hasAccess(userRole: string | undefined, allowedRoles: string[] | 'all') {
+  if (!userRole || userRole === 'admin') return true;
+  if (userRole === 'gopal@hirenestworkforce.com') return true;
+  if (allowedRoles === 'all') return true;
+  return allowedRoles.includes(userRole);
+}
+
+const menuGroups = [
+  {
+    title: "Core System",
+    items: [
+      { icon: LayoutDashboard, label: 'Dashboard', path: '/', roles: 'all' },
+      { icon: Users, label: 'Candidate Pool', path: '/candidates', roles: ['recruiter', 'vendor', 'vendor_manager'] },
+      { icon: Briefcase, label: 'Job Requisitions', path: '/jobs', roles: 'all' },
+      { icon: Zap, label: 'Match Engine', path: '/ai-matching', roles: 'all' },
+      { icon: TrendingUp, label: 'Recruiter Pipeline', path: '/pipeline', roles: ['recruiter', 'client', 'client_manager'] },
+    ]
+  },
+  {
+    title: "AI System",
+    items: [
+      { icon: BrainCircuit, label: 'Intelligence OS', path: '/intelligence', roles: ['recruiter'] },
+      { icon: FileText, label: 'Neural Parsing', path: '/resumes', roles: ['recruiter'] },
+      { icon: Activity, label: 'AI Monitor', path: '/ai-monitor', roles: ['recruiter'] },
+      { icon: Cpu, label: 'Autonomous Agents', path: '/agents', roles: ['recruiter'] },
+    ]
+  },
+  {
+    title: "Communication",
+    items: [
+      { icon: Mail, label: 'Email Node', path: '/email', roles: ['recruiter'] },
+      { icon: MessageSquare, label: 'WhatsApp Node', path: '/whatsapp', roles: ['recruiter'] },
+    ]
+  },
+  {
+    title: "Marketplace",
+    items: [
+      { icon: Truck, label: 'Vendor Network', path: '/vendors', roles: ['recruiter'] },
+      { icon: Building2, label: 'Strategic Clients', path: '/clients', roles: ['recruiter'] },
+      { icon: Globe, label: 'Marketplace Dynamics', path: '/marketplace', roles: ['recruiter', 'vendor', 'vendor_manager'] },
+      { icon: Coins, label: 'Revenue Hub', path: '/deal-room', roles: ['recruiter'] },
+    ]
+  },
+  {
+    title: "System",
+    items: [
+      { icon: ShieldCheck, label: 'Command Center', path: '/exec-suite', roles: [] },
+      { icon: History, label: 'Activity Logs', path: '/activity', roles: [] },
+      { icon: Settings, label: 'OS Settings', path: '/settings', roles: 'all' },
+    ]
+  }
 ];
 
 export function Sidebar() {
   const { signOut, user } = useAuth();
-
-  const filteredNavItems = navItems.filter(item => {
-    if (user?.role === 'recruiter') {
-      const recruiterAllowed = ['Dashboard', 'Match Engine', 'Recruiter Pipeline', 'Job Requisitions', 'Candidate Pool', 'Revenue Hub', 'Marketplace', 'Email Node', 'OS Settings'];
-      return recruiterAllowed.includes(item.label);
-    }
-    if (user?.role === 'vendor' || user?.role === 'vendor_manager') {
-      const vendorAllowed = ['Dashboard', 'Candidate Pool', 'Job Requisitions', 'Marketplace', 'Match Engine', 'OS Settings'];
-      return vendorAllowed.includes(item.label);
-    }
-    if (user?.role === 'client' || user?.role === 'client_manager') {
-      const clientAllowed = ['Dashboard', 'Job Requisitions', 'Match Engine', 'Recruiter Pipeline', 'Marketplace', 'OS Settings'];
-      return clientAllowed.includes(item.label);
-    }
-    return true; // admin sees all
-  });
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 border-r border-slate-800">
@@ -80,24 +96,36 @@ export function Sidebar() {
         <h1 className="text-xl font-bold text-white tracking-tight">HireNest</h1>
       </div>
 
-      <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
-        {filteredNavItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group",
-                isActive 
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
-                  : "hover:bg-slate-800 hover:text-white"
-              )
-            }
-          >
-            <item.icon className="w-5 h-5" />
-            <span className="font-medium text-sm">{item.label}</span>
-          </NavLink>
-        ))}
+      <nav className="flex-1 px-4 py-2 overflow-y-auto custom-scrollbar">
+        {menuGroups.map((group, index) => {
+          const visibleItems = group.items.filter(item => hasAccess(user?.role, item.roles as any));
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={index} className="mb-8">
+              <h3 className="px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3">{group.title}</h3>
+              <div className="space-y-1">
+                {visibleItems.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 group relative",
+                        isActive 
+                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                          : "hover:bg-slate-800 hover:text-white"
+                      )
+                    }
+                  >
+                    <item.icon className="w-5 h-5" />
+                    <span className="font-medium text-sm">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </nav>
 
       <div className="p-4 border-t border-slate-800 space-y-4">
