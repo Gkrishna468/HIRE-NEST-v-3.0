@@ -61,10 +61,10 @@ export default function Settings() {
               provider_token,
               provider_refresh_token
             `)
-            .eq("id", user.id)
+            .eq("user_id", user.id)
             .maybeSingle();
 
-          const connected = (profile?.gmail_connected === true && !!profile?.provider_token) || !!profile?.provider_refresh_token;
+          const connected = !!profile?.provider_refresh_token;
           setGmailConnected(connected);
         } catch (err) {
           console.error(err);
@@ -138,7 +138,7 @@ export default function Settings() {
           provider_token: null,
           provider_refresh_token: null,
           updated_at: new Date().toISOString()
-        }).eq('id', user.id);
+        }).eq('user_id', user.id);
       }
 
       // Clear token by signing out

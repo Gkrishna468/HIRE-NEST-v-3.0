@@ -24,7 +24,7 @@ export async function syncGmailInbox(force: boolean = false) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('provider_token, metadata')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
     
     token = profile?.provider_token || profile?.metadata?.google_token;
@@ -125,7 +125,7 @@ export async function syncGmailInbox(force: boolean = false) {
       const { html, text } = extractBody(email.payload);
       const finalBodyText = text || email.snippet || "No textual content detected.";
       
-      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('company_id').eq('user_id', session?.user?.id).maybeSingle();
 
       const emailPayload: any = {
         subject: subject,
@@ -233,7 +233,7 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
     const { data: profile } = await supabase
       .from('profiles')
       .select('provider_token, metadata')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
     
     token = profile?.provider_token || profile?.metadata?.google_token;
@@ -308,7 +308,7 @@ export async function sendNewEmail(to: string, subject: string, body: string) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('provider_token, metadata')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
     
     token = profile?.provider_token || profile?.metadata?.google_token;
@@ -375,7 +375,7 @@ export async function syncGmailResumes() {
     const { data: profile } = await supabase
       .from('profiles')
       .select('provider_token, metadata')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
     
     token = profile?.provider_token || profile?.metadata?.google_token;
@@ -463,7 +463,7 @@ export async function setupGmailWatch() {
     const { data: profile } = await supabase
       .from('profiles')
       .select('provider_token, metadata')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
     
     token = profile?.provider_token || profile?.metadata?.google_token;
@@ -508,7 +508,7 @@ export async function setupGmailWatch() {
           watch_expires: data.expiration
         } 
       })
-      .eq('id', user.user.id);
+      .eq('user_id', user.user.id);
   }
 
   return data;

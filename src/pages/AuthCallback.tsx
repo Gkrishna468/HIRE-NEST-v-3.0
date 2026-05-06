@@ -58,8 +58,8 @@ export default function AuthCallback() {
               .from("profiles")
               .upsert(
                 {
-                  id: session.user.id,
                   email: session.user.email,
+                  user_id: session.user.id,
                   gmail_connected: true,
                   gmail_email: gmailEmail,
                   provider_token: providerToken,
@@ -71,30 +71,25 @@ export default function AuthCallback() {
                   }
                 },
                 {
-                  onConflict: "id"
+                  onConflict: "email"
                 }
               );
 
             if (profileError) {
               console.error("PROFILE SAVE ERROR", profileError);
-              // Fallback to email conflict if ID conflict isn't the primary constraint
+              // Fallback for simple ID-based schemas
               await supabase
                 .from("profiles")
-                .upsert(
-                  {
-                    email: session.user.email,
-                    gmail_connected: true,
-                    gmail_email: gmailEmail,
-                    provider_token: providerToken,
-                    provider_refresh_token: refreshToken,
-                    updated_at: new Date().toISOString()
-                  },
-                  {
-                    onConflict: "email"
-                  }
-                );
+                .update({
+                  gmail_connected: true,
+                  gmail_email: gmailEmail,
+                  provider_token: providerToken,
+                  provider_refresh_token: refreshToken,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", session.user.id);
             } else {
-              console.log("PROFILE UPDATED VIA ID");
+              console.log("PROFILE UPDATED SUCCESSFULLY");
             }
           }
 

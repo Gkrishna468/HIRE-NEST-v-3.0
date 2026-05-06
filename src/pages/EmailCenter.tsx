@@ -66,9 +66,10 @@ export function EmailCenter() {
           .select(`
             gmail_connected,
             provider_token,
-            provider_refresh_token
+            provider_refresh_token,
+            gmail_email
           `)
-          .eq("id", user.id)
+          .eq("user_id", user.id)
           .maybeSingle();
 
         if (error) {
@@ -79,13 +80,15 @@ export function EmailCenter() {
           return;
         }
 
-        // Connection is stable if we have a refresh token or explicitly connected flag
-        const connected = (profile?.gmail_connected === true && !!profile?.provider_token) || !!profile?.provider_refresh_token;
-        setGmailConnected(connected);
-        setIsConnected(connected);
-        setHasToken(connected);
+        // authoritative check: connection is alive if we have a refresh token
+        const isConnected = !!profile?.provider_refresh_token;
+        const hasActiveSessionToken = !!profile?.provider_token || !!profile?.provider_refresh_token;
+        
+        setGmailConnected(isConnected);
+        setIsConnected(isConnected);
+        setHasToken(hasActiveSessionToken);
 
-        if (connected) {
+        if (isConnected) {
           handleRefresh();
         }
       } catch (err) {
