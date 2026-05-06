@@ -19,15 +19,15 @@ export async function syncGmailInbox(force: boolean = false) {
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check profile metadata if session token is missing)
+  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
   if (!token) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('provider_token, metadata')
+    const { data: gmailAccount } = await supabase
+      .from('gmail_accounts')
+      .select('access_token, refresh_token')
       .eq('user_id', userId)
       .maybeSingle();
     
-    token = profile?.provider_token || profile?.metadata?.google_token;
+    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
   }
 
   if (!token) {
@@ -228,15 +228,15 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check profile metadata if session token is missing)
+  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
   if (!token) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('provider_token, metadata')
+    const { data: gmailAccount } = await supabase
+      .from('gmail_accounts')
+      .select('access_token, refresh_token')
       .eq('user_id', userId)
       .maybeSingle();
     
-    token = profile?.provider_token || profile?.metadata?.google_token;
+    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
   }
 
   if (!token) throw new Error("GMAIL_NOT_CONNECTED");
@@ -303,15 +303,15 @@ export async function sendNewEmail(to: string, subject: string, body: string) {
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check profile metadata if session token is missing)
+  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
   if (!token) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('provider_token, metadata')
+    const { data: gmailAccount } = await supabase
+      .from('gmail_accounts')
+      .select('access_token, refresh_token')
       .eq('user_id', userId)
       .maybeSingle();
     
-    token = profile?.provider_token || profile?.metadata?.google_token;
+    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
   }
 
   if (!token) throw new Error("GMAIL_NOT_CONNECTED");
@@ -370,15 +370,15 @@ export async function syncGmailResumes() {
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check profile metadata if session token is missing)
+  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
   if (!token) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('provider_token, metadata')
+    const { data: gmailAccount } = await supabase
+      .from('gmail_accounts')
+      .select('access_token, refresh_token')
       .eq('user_id', userId)
       .maybeSingle();
     
-    token = profile?.provider_token || profile?.metadata?.google_token;
+    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
   }
 
   if (!token) {
@@ -458,15 +458,15 @@ export async function setupGmailWatch() {
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check profile metadata if session token is missing)
+  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
   if (!token) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('provider_token, metadata')
+    const { data: gmailAccount } = await supabase
+      .from('gmail_accounts')
+      .select('access_token, refresh_token')
       .eq('user_id', userId)
       .maybeSingle();
     
-    token = profile?.provider_token || profile?.metadata?.google_token;
+    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
   }
 
   if (!token) {

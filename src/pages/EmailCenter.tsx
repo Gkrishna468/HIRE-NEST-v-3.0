@@ -61,15 +61,12 @@ export function EmailCenter() {
           return;
         }
 
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select(`
-            gmail_connected,
-            provider_token,
-            provider_refresh_token,
-            gmail_email
-          `)
+        // authoritative check: connection is alive if we have a refresh token in gmail_accounts
+        const { data: gmailAccount, error } = await supabase
+          .from("gmail_accounts")
+          .select("*")
           .eq("user_id", user.id)
+          .eq("connected", true)
           .maybeSingle();
 
         if (error) {
@@ -80,15 +77,13 @@ export function EmailCenter() {
           return;
         }
 
-        // authoritative check: connection is alive if we have a refresh token
-        const isConnected = !!profile?.provider_refresh_token;
-        const hasActiveSessionToken = !!profile?.provider_token || !!profile?.provider_refresh_token;
+        const connected = !!gmailAccount?.refresh_token || !!gmailAccount?.access_token;
         
-        setGmailConnected(isConnected);
-        setIsConnected(isConnected);
-        setHasToken(hasActiveSessionToken);
+        setGmailConnected(connected);
+        setIsConnected(connected);
+        setHasToken(connected);
 
-        if (isConnected) {
+        if (connected) {
           handleRefresh();
         }
       } catch (err) {
@@ -764,6 +759,7 @@ function ComposeModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
   const [content, setContent] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
+  const [isGeneratingSubject, setIsGeneratingSubject] = useState(false);
 
   const handleSend = async () => {
     if (!to || !subject || !content) return;
@@ -794,6 +790,26 @@ function ComposeModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
       toast.error("Enhancement failure");
     } finally {
       setIsEnhancing(false);
+    }
+  };
+
+  const handleGenerateSubject = async () => {
+    if (!content.trim()) {
+      toast.error("Please draft some content first.");
+      return;
+    }
+    setIsGeneratingSubject(true);
+    try {
+      const { callAISecureProxy } = await import('@/lib/ai');
+      const response = await callAISecureProxy(`Analyze this email content and suggest a compelling, professional, one-line subject.
+        Content: ${content}
+        Return ONLY the subject line text.`);
+      setSubject(response.replace(/"/g, '').trim());
+      toast.success("Neural Subject Captured");
+    } catch (err: any) {
+      toast.error("Subject generation failure");
+    } finally {
+      setIsGeneratingSubject(false);
     }
   };
 
@@ -840,14 +856,24 @@ function ComposeModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
                     className="w-full pl-20 py-3 border-b border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold text-sm"
                    />
                 </div>
-                <div className="relative group">
-                   <div className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Subject</div>
-                   <input 
-                    type="text" 
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="w-full pl-20 py-3 border-b border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold text-sm"
-                   />
+                <div className="relative group flex items-center gap-2">
+                   <div className="flex-1 relative">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Subject</div>
+                    <input 
+                      type="text" 
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="w-full pl-20 py-3 border-b border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold text-sm"
+                    />
+                   </div>
+                   <button
+                    onClick={handleGenerateSubject}
+                    disabled={isGeneratingSubject || !content.trim()}
+                    className="flex-shrink-0 p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all disabled:opacity-30 disabled:hover:bg-transparent group/btn"
+                    title="Generate AI Subject"
+                   >
+                    {isGeneratingSubject ? <Loader2 className="w-4 h-4 animate-spin" /> : <BrainCircuit className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />}
+                   </button>
                 </div>
               </div>
 

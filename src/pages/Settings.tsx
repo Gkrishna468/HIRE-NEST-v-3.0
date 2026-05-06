@@ -54,17 +54,17 @@ export default function Settings() {
             return;
           }
 
-          const { data: profile } = await supabase
-            .from("profiles")
+          const { data: gmailAccount } = await supabase
+            .from("gmail_accounts")
             .select(`
-              gmail_connected,
-              provider_token,
-              provider_refresh_token
+              connected,
+              access_token,
+              refresh_token
             `)
             .eq("user_id", user.id)
             .maybeSingle();
 
-          const connected = !!profile?.provider_refresh_token;
+          const connected = !!gmailAccount?.refresh_token || !!gmailAccount?.access_token;
           setGmailConnected(connected);
         } catch (err) {
           console.error(err);
@@ -133,6 +133,9 @@ export default function Settings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        await supabase.from('gmail_accounts').delete().eq('user_id', user.id);
+        
+        // Optional: Also clear legacy profile fields
         await supabase.from('profiles').update({
           gmail_connected: false,
           provider_token: null,

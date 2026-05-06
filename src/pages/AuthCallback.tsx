@@ -47,49 +47,41 @@ export default function AuthCallback() {
               session.provider_refresh_token ||
               null;
             
-            const gmailEmail = session.user.email; // The email returned from OAuth provider
+            const gmailEmail = session.user.email; 
 
             console.log("PROVIDER TOKEN:", providerToken);
             console.log("REFRESH TOKEN:", refreshToken);
             console.log("GMAIL EMAIL:", gmailEmail);
 
-            // Update profile using ID to link Gmail tokens to the authenticated CRM user
-            const { error: profileError } = await supabase
-              .from("profiles")
+            // Persist into authoritative gmail_accounts table
+            const { error: gmailError } = await supabase
+              .from("gmail_accounts")
               .upsert(
                 {
-                  email: session.user.email,
                   user_id: session.user.id,
-                  gmail_connected: true,
                   gmail_email: gmailEmail,
-                  provider_token: providerToken,
-                  provider_refresh_token: refreshToken,
-                  updated_at: new Date().toISOString(),
-                  metadata: { 
-                    google_token: providerToken,
-                    last_auth: new Date().toISOString()
-                  }
+                  access_token: providerToken,
+                  refresh_token: refreshToken,
+                  connected: true,
+                  updated_at: new Date().toISOString()
                 },
                 {
-                  onConflict: "email"
+                  onConflict: "user_id"
                 }
               );
 
-            if (profileError) {
-              console.error("PROFILE SAVE ERROR", profileError);
-              // Fallback for simple ID-based schemas
-              await supabase
-                .from("profiles")
-                .update({
-                  gmail_connected: true,
-                  gmail_email: gmailEmail,
-                  provider_token: providerToken,
-                  provider_refresh_token: refreshToken,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", session.user.id);
+            if (gmailError) {
+              console.error("GMAIL_ACCOUNTS SAVE ERROR", gmailError);
+              
+              // Fallback: Try to update profile as secondary if table missing
+              await supabase.from('profiles').update({
+                gmail_connected: true,
+                provider_token: providerToken,
+                provider_refresh_token: refreshToken,
+                updated_at: new Date().toISOString()
+              }).eq('user_id', session.user.id);
             } else {
-              console.log("PROFILE UPDATED SUCCESSFULLY");
+              console.log("GMAIL ACCOUNT PERSISTED");
             }
           }
 
