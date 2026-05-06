@@ -102,15 +102,7 @@ export default function Settings() {
         provider: 'google',
         options: {
           redirectTo: window.location.origin + '/auth/callback',
-          scopes: [
-            'openid',
-            'email',
-            'profile',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.modify',
-            'https://www.googleapis.com/auth/gmail.labels',
-            'https://www.googleapis.com/auth/gmail.send'
-          ].join(' '),
+          scopes: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels',
           queryParams: {
             access_type: 'offline',
             prompt: 'consent'

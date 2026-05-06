@@ -50,6 +50,8 @@ export default function AuthCallback() {
         console.log("REFRESH_TOKEN:", refreshToken ? "PRESENT" : "MISSING");
         console.log("GMAIL_EMAIL:", gmailEmail);
 
+        const syncStatus = refreshToken ? "READY" : "ERROR";
+
         const { error: upsertError } = await supabase
           .from("gmail_accounts")
           .upsert({
@@ -58,7 +60,7 @@ export default function AuthCallback() {
             access_token: accessToken,
             refresh_token: refreshToken,
             connected: true,
-            sync_status: "READY",
+            sync_status: syncStatus,
             updated_at: new Date().toISOString()
           }, {
             onConflict: "user_id"
@@ -68,8 +70,12 @@ export default function AuthCallback() {
           console.error("UPSERT ERROR:", upsertError);
           toast.error("Failed to persist Gmail credentials.");
         } else {
-          console.log("GMAIL_ACCOUNT PERSISTED SUCCESSFULLY");
-          toast.success('Neural Link Established.');
+          console.log("GMAIL_ACCOUNT PERSISTED SUCCESSFULLY - STATUS:", syncStatus);
+          if (syncStatus === "ERROR") {
+            toast.error("Critical: Google failed to provide a Refresh Token. Re-link with consent.");
+          } else {
+            toast.success('Neural Link Established.');
+          }
         }
 
         // Redirect to email center for immediate sync
