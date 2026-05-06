@@ -35,23 +35,45 @@ export default function AuthCallback() {
         if (session) {
           toast.success('Neural Link Established.');
           
-          const { user, provider_token, provider_refresh_token } = session;
-          
-          if (provider_token) {
-            // Persist tokens into profiles for background workers and UI stability
-            await supabase.from('profiles').upsert({
-              email: user.email,
-              gmail_connected: true,
-              provider_token: provider_token,
-              provider_refresh_token: provider_refresh_token,
-              updated_at: new Date().toISOString(),
-              metadata: { 
-                google_token: provider_token,
-                last_auth: new Date().toISOString()
-              }
-            }, { 
-              onConflict: 'email' 
-            });
+          if (session.user) {
+            console.log("SESSION:", session);
+
+            const providerToken =
+              session.provider_token ||
+              (session.user as any)?.user_metadata?.provider_token ||
+              null;
+
+            const refreshToken =
+              session.provider_refresh_token ||
+              null;
+
+            console.log("PROVIDER TOKEN:", providerToken);
+            console.log("REFRESH TOKEN:", refreshToken);
+
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .upsert(
+                {
+                  email: session.user.email,
+                  gmail_connected: true,
+                  provider_token: providerToken,
+                  provider_refresh_token: refreshToken,
+                  updated_at: new Date().toISOString(),
+                  metadata: { 
+                    google_token: providerToken,
+                    last_auth: new Date().toISOString()
+                  }
+                },
+                {
+                  onConflict: "email"
+                }
+              );
+
+            if (profileError) {
+              console.error("PROFILE SAVE ERROR", profileError);
+            } else {
+              console.log("PROFILE UPDATED");
+            }
           }
 
           // Force redirect to email center for immediate sync gratification
