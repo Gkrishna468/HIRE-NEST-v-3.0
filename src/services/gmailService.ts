@@ -21,25 +21,28 @@ export async function syncGmailInbox(force: boolean = false) {
   }
 
   // 1. Fetch recent messages
-  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${force ? 100 : 25}`;
-  console.log("[Gmail Sync] Initiating fetch for user ID:", session?.user?.id);
+  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${force ? 100 : 50}`;
+  console.log(`[Gmail Sync] Initiating fetch. Identity: ${session?.user?.id}. Force Mode: ${force}`);
   
   const listRes = await fetch(listUrl, {
     headers: { Authorization: `Bearer ${token}` }
   });
-  const listData = await listRes.json();
-
-  if (listData.error) {
-    console.error("[Gmail Sync] API Error:", listData.error);
-    throw new Error(`Gmail API failure: ${listData.error.message}`);
+  
+  if (!listRes.ok) {
+    const errorData = await listRes.json();
+    console.error("[Gmail Sync] API Request Failed:", errorData);
+    throw new Error(`Gmail API Error: ${errorData.error?.message || listRes.statusText}`);
   }
 
+  const listData = await listRes.json();
+  console.log(`[Gmail Sync] API Response received. Found ${listData.messages?.length || 0} messages.`);
+
   if (!listData.messages || listData.messages.length === 0) {
-    console.log("[Gmail Sync] No new signals detected in the stream.");
+    console.log("[Gmail Sync] No signals detected in the stream.");
     return { count: 0, message: "Inbox is optimized and quiet." };
   }
 
-  console.log(`[Gmail Sync] Found ${listData.messages.length} potential signals. Processing...`);
+  console.log(`[Gmail Sync] Analyzing ${listData.messages.length} potential signals...`);
 
   let syncCount = 0;
   let errorCount = 0;
@@ -50,7 +53,6 @@ export async function syncGmailInbox(force: boolean = false) {
       if (!force) {
         const { data: exist } = await supabase.from('processing_cache').select('id').eq('source_id', msg.id).maybeSingle();
         if (exist) {
-          console.log(`[Gmail Sync] Signal ${msg.id} already exists in cache. Skipping.`);
           continue;
         }
       }
@@ -61,10 +63,7 @@ export async function syncGmailInbox(force: boolean = false) {
       });
       const email = await detailRes.json();
 
-      if (!email || !email.payload) {
-        console.warn(`[Gmail Sync] Message ${msg.id} returned empty payload. Skipping.`);
-        continue;
-      }
+      if (!email || !email.payload) continue;
 
       const headers = email.payload.headers || [];
       const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
@@ -73,56 +72,46 @@ export async function syncGmailInbox(force: boolean = false) {
       const messageHeaderId = headers.find((h: any) => h.name === 'Message-ID' || h.name === 'Message-Id')?.value || '';
       const senderEmail = from.match(/<(.+?)>/)?.[1] || from;
 
-      // RECURSIVE BODY EXTRACTION
-      const getBody = (payload: any): { html: string; text: string } => {
+      // RECURSIVE BODY EXTRACTION (High Fidelity)
+      const extractBody = (payload: any): { html: string; text: string } => {
         let html = "";
         let text = "";
         
-        const decode = (data: string) => {
+        const decodeText = (data: string) => {
           try {
             const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
-            const decoded = atob(b64);
-            try {
-              return decodeURIComponent(escape(decoded));
-            } catch (e) {
-              return decoded;
-            }
+            return decodeURIComponent(escape(atob(b64)));
           } catch (e) {
-            return "";
+            try { return atob(data.replace(/-/g, '+').replace(/_/g, '/')); } catch { return ""; }
           }
         };
 
-        const parsePart = (part: any) => {
-          if (part.mimeType === 'text/plain' && part.body?.data) {
-            text += decode(part.body.data);
-          } else if (part.mimeType === 'text/html' && part.body?.data) {
-            html += decode(part.body.data);
-          }
-          
-          if (part.parts) {
-            part.parts.forEach(parsePart);
-          }
+        const processParts = (parts: any[]) => {
+          parts.forEach(part => {
+            if (part.mimeType === 'text/plain' && part.body?.data) {
+              text += decodeText(part.body.data);
+            } else if (part.mimeType === 'text/html' && part.body?.data) {
+              html += decodeText(part.body.data);
+            } else if (part.parts) {
+              processParts(part.parts);
+            }
+          });
         };
 
         if (payload.parts) {
-          payload.parts.forEach(parsePart);
-        } else if (payload.body && payload.body.data) {
-          if (payload.mimeType === 'text/plain') text = decode(payload.body.data);
-          if (payload.mimeType === 'text/html') html = decode(payload.body.data);
+          processParts(payload.parts);
+        } else if (payload.body?.data) {
+          if (payload.mimeType === 'text/plain') text = decodeText(payload.body.data);
+          else if (payload.mimeType === 'text/html') html = decodeText(payload.body.data);
         }
         
         return { html, text };
       };
 
-      const { html, text } = getBody(email.payload);
-      const finalBodyText = text || email.snippet || "No content extracted.";
+      const { html, text } = extractBody(email.payload);
+      const finalBodyText = text || email.snippet || "No textual content detected.";
       
       const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
-
-      if (!session?.user?.id) {
-        console.warn("[Gmail Sync] Session lost during iteration. Aborting.");
-        break;
-      }
 
       const emailPayload: any = {
         subject: subject,
@@ -137,45 +126,43 @@ export async function syncGmailInbox(force: boolean = false) {
         to_email: to,
         direction: 'inbound',
         status: 'received',
-        user_id: session.user.id,
+        user_id: session?.user?.id,
         company_id: profile?.company_id,
         message_header_id: messageHeaderId,
         labels: email.labelIds || []
       };
 
-      // 2. Persist email with strictly enforced unique message_id
-      console.log(`[Gmail Sync] Attempting persistence for signal: ${msg.id} (${subject})`);
+      // 2. Persist with RLS awareness
       const { error: upsertError } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
 
       if (upsertError) {
-        console.error(`[Gmail Sync] Storage failure for ${msg.id}. Check RLS or Schema.`, upsertError);
+        console.error(`[Gmail Sync] Persistence failure for ${msg.id}:`, upsertError);
         errorCount++;
         continue;
       }
 
-      // 3. Mark as processed to prevent duplicate enrichment costs
-      await supabase.from('processing_cache').insert({
+      // 3. Update Cache
+      await supabase.from('processing_cache').upsert({
         source_id: msg.id,
-        type: 'email',
-        metadata: { subject }
-      });
+        type: 'email'
+      }, { onConflict: 'source_id' });
 
-      console.log(`[Gmail Sync] Success: Signal ${msg.id} mirrored to neural store.`);
       syncCount++;
-
-      // 4. Trigger Async AI Enrichment (Non-blocking for sync performance)
+      
+      // Async AI Enrichment
       triggerAIEnrichment(msg.id, email, subject, from);
 
     } catch (msgErr) {
-      console.error(`[Gmail Sync] Message recovery failed for ${msg.id}:`, msgErr);
+      console.error(`[Gmail Sync] Signal recovery failed for ${msg.id}:`, msgErr);
       errorCount++;
     }
   }
 
+  console.log(`[Gmail Sync] Finished. Synced: ${syncCount}. Errors: ${errorCount}.`);
   return { 
     count: syncCount, 
     errors: errorCount,
-    message: `Intelligence sync concluded. ${syncCount} signals synchronized.` 
+    message: syncCount > 0 ? `Mirrored ${syncCount} signals from neural network.` : "No new messages signals detected."
   };
 }
 

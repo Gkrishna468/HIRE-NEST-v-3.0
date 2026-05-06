@@ -375,14 +375,29 @@ export function EmailCenter() {
                     <span className="text-slate-400">Total Signals</span>
                     <span className="text-slate-900 font-bold">{emails.length} stored</span>
                   </div>
+                  {syncStatus === 'failed' && (
+                    <div className="mt-2 p-2 bg-red-50 rounded-lg text-[9px] text-red-600 font-medium">
+                      Neural link interrupted. Verify permissions.
+                    </div>
+                  )}
                 </div>
-                <button 
-                  onClick={() => handleRefresh(true)}
-                  disabled={isRefreshing}
-                  className="w-full mt-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-slate-50 transition-all font-bold disabled:opacity-50"
-                >
-                  {isRefreshing ? 'Syncing...' : 'Force Signal Depth Re-Sync'}
-                </button>
+                
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <button 
+                    onClick={() => handleRefresh(true)}
+                    disabled={isRefreshing}
+                    className="py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-slate-50 transition-all font-bold disabled:opacity-50"
+                  >
+                    {isRefreshing ? 'Syncing...' : 'Depth Sync'}
+                  </button>
+                  <a 
+                    href="/settings"
+                    className="py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all font-bold text-center flex items-center justify-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Reset Link
+                  </a>
+                </div>
               </div>
             </div>
           ) : (
