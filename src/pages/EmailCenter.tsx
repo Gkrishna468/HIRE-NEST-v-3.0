@@ -54,7 +54,7 @@ export function EmailCenter() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
 
-        if (!user?.email) {
+        if (!user) {
           setGmailConnected(false);
           setIsConnected(false);
           setHasToken(false);
@@ -68,7 +68,7 @@ export function EmailCenter() {
             provider_token,
             provider_refresh_token
           `)
-          .eq("email", user.email)
+          .eq("id", user.id)
           .maybeSingle();
 
         if (error) {
@@ -79,7 +79,8 @@ export function EmailCenter() {
           return;
         }
 
-        const connected = profile?.gmail_connected === true && !!profile?.provider_token;
+        // Connection is stable if we have a refresh token or explicitly connected flag
+        const connected = (profile?.gmail_connected === true && !!profile?.provider_token) || !!profile?.provider_refresh_token;
         setGmailConnected(connected);
         setIsConnected(connected);
         setHasToken(connected);

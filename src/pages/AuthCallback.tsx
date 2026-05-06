@@ -46,16 +46,22 @@ export default function AuthCallback() {
             const refreshToken =
               session.provider_refresh_token ||
               null;
+            
+            const gmailEmail = session.user.email; // The email returned from OAuth provider
 
             console.log("PROVIDER TOKEN:", providerToken);
             console.log("REFRESH TOKEN:", refreshToken);
+            console.log("GMAIL EMAIL:", gmailEmail);
 
+            // Update profile using ID to link Gmail tokens to the authenticated CRM user
             const { error: profileError } = await supabase
               .from("profiles")
               .upsert(
                 {
+                  id: session.user.id,
                   email: session.user.email,
                   gmail_connected: true,
+                  gmail_email: gmailEmail,
                   provider_token: providerToken,
                   provider_refresh_token: refreshToken,
                   updated_at: new Date().toISOString(),
@@ -65,14 +71,30 @@ export default function AuthCallback() {
                   }
                 },
                 {
-                  onConflict: "email"
+                  onConflict: "id"
                 }
               );
 
             if (profileError) {
               console.error("PROFILE SAVE ERROR", profileError);
+              // Fallback to email conflict if ID conflict isn't the primary constraint
+              await supabase
+                .from("profiles")
+                .upsert(
+                  {
+                    email: session.user.email,
+                    gmail_connected: true,
+                    gmail_email: gmailEmail,
+                    provider_token: providerToken,
+                    provider_refresh_token: refreshToken,
+                    updated_at: new Date().toISOString()
+                  },
+                  {
+                    onConflict: "email"
+                  }
+                );
             } else {
-              console.log("PROFILE UPDATED");
+              console.log("PROFILE UPDATED VIA ID");
             }
           }
 

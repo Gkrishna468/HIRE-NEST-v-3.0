@@ -49,7 +49,7 @@ export default function Settings() {
         try {
           const { data: { user } } = await supabase.auth.getUser();
 
-          if (!user?.email) {
+          if (!user) {
             setGmailConnected(false);
             return;
           }
@@ -61,10 +61,10 @@ export default function Settings() {
               provider_token,
               provider_refresh_token
             `)
-            .eq("email", user.email)
+            .eq("id", user.id)
             .maybeSingle();
 
-          const connected = profile?.gmail_connected === true && !!profile?.provider_token;
+          const connected = (profile?.gmail_connected === true && !!profile?.provider_token) || !!profile?.provider_refresh_token;
           setGmailConnected(connected);
         } catch (err) {
           console.error(err);
@@ -132,13 +132,13 @@ export default function Settings() {
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user?.email) {
+      if (user) {
         await supabase.from('profiles').update({
           gmail_connected: false,
           provider_token: null,
           provider_refresh_token: null,
           updated_at: new Date().toISOString()
-        }).eq('email', user.email);
+        }).eq('id', user.id);
       }
 
       // Clear token by signing out
