@@ -46,20 +46,17 @@ export default function Settings() {
   useEffect(() => {
     async function checkGmail() {
       if (isSupabaseConfigured()) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const sessionToken = session?.provider_token;
-        
-        let hasPersistedToken = false;
-        if (session?.user?.id) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('metadata, provider_token')
-            .eq('id', session.user.id)
-            .maybeSingle();
-          hasPersistedToken = !!profile?.metadata?.google_token || !!profile?.provider_token;
-        }
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-        setGmailConnected(!!sessionToken || hasPersistedToken);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('gmail_connected, provider_token')
+          .eq('email', user.email || '')
+          .maybeSingle();
+        
+        const gmailConnected = !!profile?.gmail_connected && !!profile?.provider_token;
+        setGmailConnected(gmailConnected);
       }
     }
     checkGmail();

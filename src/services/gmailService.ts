@@ -223,7 +223,21 @@ async function triggerAIEnrichment(messageId: string, email: any, subject: strin
  */
 export async function sendEmailReply(threadId: string, to: string, subject: string, body: string, inReplyToHeaderId?: string) {
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.provider_token;
+  let token = session?.provider_token;
+  const userId = session?.user?.id;
+
+  if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
+
+  // Robust Token Recovery (check profile metadata if session token is missing)
+  if (!token) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('provider_token, metadata')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    token = profile?.provider_token || profile?.metadata?.google_token;
+  }
 
   if (!token) throw new Error("GMAIL_NOT_CONNECTED");
 
@@ -284,7 +298,21 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
  */
 export async function sendNewEmail(to: string, subject: string, body: string) {
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.provider_token;
+  let token = session?.provider_token;
+  const userId = session?.user?.id;
+
+  if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
+
+  // Robust Token Recovery (check profile metadata if session token is missing)
+  if (!token) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('provider_token, metadata')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    token = profile?.provider_token || profile?.metadata?.google_token;
+  }
 
   if (!token) throw new Error("GMAIL_NOT_CONNECTED");
 
@@ -337,7 +365,21 @@ export async function sendNewEmail(to: string, subject: string, body: string) {
 
 export async function syncGmailResumes() {
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.provider_token;
+  let token = session?.provider_token;
+  const userId = session?.user?.id;
+
+  if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
+
+  // Robust Token Recovery (check profile metadata if session token is missing)
+  if (!token) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('provider_token, metadata')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    token = profile?.provider_token || profile?.metadata?.google_token;
+  }
 
   if (!token) {
     throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
@@ -411,7 +453,21 @@ export async function syncGmailResumes() {
 
 export async function setupGmailWatch() {
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.provider_token;
+  let token = session?.provider_token;
+  const userId = session?.user?.id;
+
+  if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
+
+  // Robust Token Recovery (check profile metadata if session token is missing)
+  if (!token) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('provider_token, metadata')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    token = profile?.provider_token || profile?.metadata?.google_token;
+  }
 
   if (!token) {
     throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");

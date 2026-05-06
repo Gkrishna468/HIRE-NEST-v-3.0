@@ -49,29 +49,21 @@ export function EmailCenter() {
 
   useEffect(() => {
     async function checkConnection() {
-      const { data: { session } } = await supabase.auth.getSession();
-      const isGoogleLinked = !!session?.user?.id && (
-        session.user.app_metadata?.provider === 'google' || 
-        session.user.identities?.some(id => id.provider === 'google')
-      );
-      
-      const sessionToken = session?.provider_token;
-      
-      // Also check profile metadata for persisted token if session one is missing
-      let hasPersistedToken = false;
-      if (session?.user?.id) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('metadata, provider_token')
-          .eq('id', session.user.id)
-          .maybeSingle();
-        hasPersistedToken = !!profile?.metadata?.google_token || !!profile?.provider_token;
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-      setIsConnected(isGoogleLinked);
-      setHasToken(!!sessionToken || hasPersistedToken);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('gmail_connected, provider_token')
+        .eq('email', user.email || '')
+        .maybeSingle();
       
-      if (sessionToken || hasPersistedToken) {
+      const gmailConnected = !!profile?.gmail_connected && !!profile?.provider_token;
+      
+      setIsConnected(gmailConnected);
+      setHasToken(gmailConnected);
+      
+      if (gmailConnected) {
         handleRefresh();
       }
     }
