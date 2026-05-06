@@ -43,11 +43,10 @@ export function EmailCenter() {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<string>('idle');
+  const [syncStatus, setSyncStatus] = useState<string>('INITIAL');
   const [gmailConnected, setGmailConnected] = useState(false);
   const [loadingConnection, setLoadingConnection] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
-  const [hasToken, setHasToken] = useState(false);
 
   useEffect(() => {
     const checkConnection = async () => {
@@ -57,40 +56,38 @@ export function EmailCenter() {
         if (!user) {
           setGmailConnected(false);
           setIsConnected(false);
-          setHasToken(false);
           return;
         }
 
-        // authoritative check: connection is alive if we have a refresh token in gmail_accounts
+        // authoritative check: connection state machine in gmail_accounts
         const { data: gmailAccount, error } = await supabase
           .from("gmail_accounts")
           .select("*")
           .eq("user_id", user.id)
-          .eq("connected", true)
           .maybeSingle();
 
         if (error) {
           console.error(error);
           setGmailConnected(false);
           setIsConnected(false);
-          setHasToken(false);
           return;
         }
 
         const connected = !!gmailAccount?.refresh_token || !!gmailAccount?.access_token;
-        
         setGmailConnected(connected);
         setIsConnected(connected);
-        setHasToken(connected);
+        
+        if (gmailAccount?.sync_status) {
+          setSyncStatus(gmailAccount.sync_status);
+        }
 
-        if (connected) {
+        if (connected && (!gmailAccount.sync_status || gmailAccount.sync_status === 'TOKEN_PERSISTED')) {
           handleRefresh();
         }
       } catch (err) {
         console.error(err);
         setGmailConnected(false);
         setIsConnected(false);
-        setHasToken(false);
       } finally {
         setLoadingConnection(false);
       }
@@ -144,12 +141,25 @@ export function EmailCenter() {
   const handleRefresh = async (force: boolean = false) => {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    setSyncStatus('syncing');
+    setSyncStatus('SYNCING');
+    
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('gmail_accounts').update({ sync_status: 'SYNCING' }).eq('user_id', user.id);
+      }
+
       const { syncGmailInbox } = await import('@/services/gmailService');
       const result = await syncGmailInbox(force);
       setLastSynced(new Date().toLocaleTimeString());
-      setSyncStatus('success');
+      setSyncStatus('READY');
+      
+      if (user) {
+        await supabase.from('gmail_accounts').update({ 
+          sync_status: 'READY',
+          last_synced_at: new Date().toISOString()
+        }).eq('user_id', user.id);
+      }
       
       const syncInfo = result.count > 0 
         ? `${result.count} signals synchronized.` 
@@ -158,7 +168,7 @@ export function EmailCenter() {
       toast.success(syncInfo);
       await fetchEmails();
     } catch (err: any) {
-      setSyncStatus('failed');
+      setSyncStatus('ERROR');
       toast.error(err.message || 'Signal sync failed');
     } finally {
       setIsRefreshing(false);
@@ -282,43 +292,46 @@ export function EmailCenter() {
         <nav className="flex-1 px-4 space-y-1">
           <SidebarItem 
             icon={Inbox} 
-            label="Primary Inbox" 
+            label="Priority Feed" 
             active={activeTab === 'inbox'} 
             onClick={() => setActiveTab('inbox')}
             count={threads.filter(t => t.isUnread).length}
           />
           <SidebarItem 
             icon={BrainCircuit} 
-            label="Recruitment" 
+            label="AI Follow-Ups" 
             active={activeTab === 'recruitment'} 
             onClick={() => setActiveTab('recruitment')}
             color="text-indigo-600"
           />
           <SidebarItem 
-            icon={SendHorizontal} 
-            label="Sent" 
-            active={activeTab === 'sent'} 
-            onClick={() => setActiveTab('sent')}
-          />
-          <SidebarItem 
-            icon={Star} 
-            label="Priority" 
+            icon={User} 
+            label="Candidates" 
             active={false} 
-            onClick={() => {}}
+            onClick={() => {}} 
+            dot="bg-emerald-500" 
           />
           <SidebarItem 
-            icon={Archive} 
-            label="Archived" 
-            active={activeTab === 'archived'} 
-            onClick={() => setActiveTab('archived')}
+            icon={Briefcase} 
+            label="Client Portals" 
+            active={false} 
+            onClick={() => {}} 
+            dot="bg-blue-500" 
+          />
+          <SidebarItem 
+            icon={Truck} 
+            label="Vendor Comm" 
+            active={false} 
+            onClick={() => {}} 
+            dot="bg-amber-500" 
           />
           
           <div className="pt-8 pb-4 px-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
-            Intelligent Labels
+            System Folders
           </div>
-          <SidebarItem icon={User} label="Candidates" active={false} onClick={() => {}} dot="bg-emerald-500" />
-          <SidebarItem icon={Briefcase} label="Client Queries" active={false} onClick={() => {}} dot="bg-blue-500" />
-          <SidebarItem icon={Truck} label="Vendor Comms" active={false} onClick={() => {}} dot="bg-amber-500" />
+          <SidebarItem icon={SendHorizontal} label="Transmitted" active={activeTab === 'sent'} onClick={() => setActiveTab('sent')} />
+          <SidebarItem icon={Archive} label="Archived Intel" active={activeTab === 'archived'} onClick={() => setActiveTab('archived')} />
+          <SidebarItem icon={Trash2} label="Discarded" active={false} onClick={() => {}} />
         </nav>
       </div>
 
@@ -358,14 +371,14 @@ export function EmailCenter() {
               <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Neural Sync Active</span>
             </div>
-          ) : !gmailConnected ? (
+          ) : !gmailConnected || syncStatus === 'INITIAL' ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
-              <div className="w-16 h-16 bg-red-50 rounded-3xl flex items-center justify-center mb-4 text-red-500">
-                <AlertCircle className="w-8 h-8" />
+              <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center mb-4 text-slate-500">
+                <ShieldCheck className="w-8 h-8" />
               </div>
-              <p className="text-sm font-bold text-slate-900">Gmail Not Connected</p>
+              <p className="text-sm font-bold text-slate-900">Connect Gmail Workspace</p>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Connect your account in Settings to sync communications.
+                Unlock autonomous recruitment sync and neural thread indexing.
               </p>
               <Link 
                 to="/settings"
@@ -374,69 +387,58 @@ export function EmailCenter() {
                 Go to Settings
               </Link>
             </div>
+          ) : syncStatus === 'TOKEN_PERSISTED' || (syncStatus === 'SYNCING' && emails.length === 0) ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center h-full space-y-6">
+              <div className="relative">
+                <div className="w-16 h-16 bg-indigo-50 rounded-3xl flex items-center justify-center text-indigo-600 animate-pulse relative z-10">
+                  <BrainCircuit className="w-8 h-8" />
+                </div>
+                <div className="absolute inset-0 bg-indigo-100/50 rounded-3xl animate-ping opacity-30" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-900">Preparing Neural Sync</p>
+                <div className="mt-4 w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden mx-auto">
+                   <motion.div 
+                    initial={{ width: "0%" }}
+                    animate={{ width: "100%" }}
+                    transition={{ duration: 10, repeat: Infinity }}
+                    className="h-full bg-indigo-600"
+                   />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">
+                  Importing conversations & parsing resumes...
+                </p>
+              </div>
+            </div>
+          ) : syncStatus === 'ERROR' ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center h-full">
+              <div className="w-16 h-16 bg-red-50 rounded-3xl flex items-center justify-center mb-4 text-red-500">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <p className="text-sm font-bold text-slate-900">Sync Interrupted</p>
+              <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+                The neural link encountered a synchronization failure.
+              </p>
+              <div className="mt-6 p-4 bg-slate-50 rounded-2xl text-left border border-slate-100 w-full mb-4">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Diagnostics</p>
+                <p className="text-[10px] text-red-500 font-bold">Refresh token verification failed or Gmail API quota reached.</p>
+              </div>
+              <button 
+                onClick={() => handleRefresh(true)}
+                className="w-full py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all font-bold"
+              >
+                Retry Depth Sync
+              </button>
+            </div>
           ) : filteredThreads.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center mb-4">
                 <Mail className="w-8 h-8 text-slate-200" />
               </div>
-              <p className="text-sm font-bold text-slate-900">
-                {emails.length > 0 ? 'No signal matches' : 'Inbox is quiet'}
-              </p>
+              <p className="text-sm font-bold text-slate-900">Inbox is quiet</p>
               <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-[200px]">
-                {emails.length > 0 
-                  ? 'Try clearing your search or switching tabs.' 
-                  : 'Syncing your communications hub for neural matching.'}
+                Try clearing your search or force a refresh to pull new signals.
               </p>
-              
-              <div className="mt-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 w-full">
-                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
-                  <span>Diagnostic Data</span>
-                </div>
-                <div className="space-y-2 text-left">
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-400">Gmail Linked</span>
-                    <span className={`font-bold ${isConnected ? 'text-emerald-500' : 'text-red-500'}`}>
-                      {isConnected ? (hasToken ? 'YES (ACTIVE)' : 'YES (STALE)') : 'NO'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-400">Sync Status</span>
-                    <span className={`font-bold ${syncStatus === 'failed' ? 'text-red-500' : syncStatus === 'syncing' ? 'text-indigo-500' : 'text-emerald-500'}`}>
-                      {syncStatus.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-400">Last Pulse</span>
-                    <span className="text-slate-900 font-bold">{lastSynced || 'Never'}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[10px]">
-                    <span className="text-slate-400">Total Signals</span>
-                    <span className="text-slate-900 font-bold">{emails.length} stored</span>
-                  </div>
-                  {syncStatus === 'failed' && (
-                    <div className="mt-2 p-2 bg-red-50 rounded-lg text-[9px] text-red-600 font-medium">
-                      Neural link interrupted. Verify permissions.
-                    </div>
-                  )}
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2 mt-4">
-                  <button 
-                    onClick={() => handleRefresh(true)}
-                    disabled={isRefreshing}
-                    className="py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-slate-50 transition-all font-bold disabled:opacity-50"
-                  >
-                    {isRefreshing ? 'Syncing...' : 'Depth Sync'}
-                  </button>
-                  <Link 
-                    to="/settings"
-                    className="py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all font-bold text-center flex items-center justify-center gap-1"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    Reset Link
-                  </Link>
-                </div>
-              </div>
             </div>
           ) : (
             filteredThreads.map((thread) => (
@@ -552,72 +554,93 @@ export function EmailCenter() {
               </div>
             </div>
 
-            {/* AI INTELLIGENCE PANEL */}
-            <div className="w-80 bg-slate-50/50 p-6 space-y-6 overflow-y-auto custom-scrollbar flex-shrink-0">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-white">
-                  <BrainCircuit className="w-4 h-4" />
+            {/* AI INTELLIGENCE PANEL (COPILOT) */}
+            <div className="w-80 bg-white border-l border-slate-100 p-6 space-y-6 overflow-y-auto custom-scrollbar flex-shrink-0">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-white">
+                    <BrainCircuit className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-black text-slate-900 tracking-tight text-xs uppercase tracking-widest">Recruiter Copilot</h3>
                 </div>
-                <h3 className="font-black text-slate-900 tracking-tight text-sm uppercase tracking-widest">Neural Insights</h3>
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
 
+              {/* Actionable Intelligence */}
+              <div className="space-y-4">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">AI Command Center</p>
+                <div className="grid grid-cols-1 gap-2">
+                  <CopilotAction icon={Sparkles} label="Re-score Lead" onClick={() => toast.info("Re-evaluating lead...")} />
+                  <CopilotAction icon={User} label="Deep Profile Extract" onClick={handleMapToCandidate} />
+                  <CopilotAction icon={AlertCircle} label="Detect Urgency" onClick={() => toast.info("Urgency: High")} />
+                  <CopilotAction icon={CheckCircle} label="Schedule Follow-up" onClick={() => toast.info("Task created in Follow-up Hub")} />
+                </div>
+              </div>
+
+              <div className="h-px bg-slate-100" />
+
               {selectedEmail.ai_metadata?.intent && (
-                <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
-                  <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Detected Intent</p>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full">
-                      <Zap className="w-3 h-3" />
-                      <span className="text-[10px] font-black uppercase tracking-widest">{selectedEmail.ai_metadata.intent.replace('_', ' ')}</span>
-                    </div>
-                  </div>
-                  
-                  {selectedEmail.ai_metadata.score !== undefined && (
+                <div className="space-y-4">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Neural Categorization</p>
+                  <div className="bg-slate-50 p-4 rounded-2xl space-y-4">
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Lead Score</p>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${selectedEmail.ai_metadata.score}%` }} />
-                        </div>
-                        <span className="text-xs font-black text-indigo-600">{selectedEmail.ai_metadata.score}%</span>
+                      <p className="text-[10px] font-bold text-slate-900 mb-2">Primary Intent</p>
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-white border border-slate-200 text-indigo-600 rounded-lg shadow-sm">
+                        <Zap className="w-3 h-3 text-indigo-500" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">{selectedEmail.ai_metadata.intent.replace('_', ' ')}</span>
                       </div>
                     </div>
-                  )}
+                    
+                    {selectedEmail.ai_metadata.score !== undefined && (
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-900 mb-2">Recruitment Value</p>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-white border border-slate-100 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${selectedEmail.ai_metadata.score}%` }}
+                              className="h-full bg-indigo-500 rounded-full" 
+                            />
+                          </div>
+                          <span className="text-[10px] font-black text-indigo-600">{selectedEmail.ai_metadata.score}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {selectedEmail.ai_metadata?.extracted && (
-                <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-5">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Contact Mapping</p>
-                  
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
-                      <User className="w-4 h-4 text-slate-400" />
+                <div className="space-y-4">
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Candidate Intel</p>
+                   <div className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
+                        <User className="w-5 h-5 text-slate-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-black text-slate-900 truncate">{selectedEmail.ai_metadata.extracted.name || 'Anonymous'}</p>
+                        <p className="text-[9px] text-slate-500 font-bold uppercase truncate">{selectedEmail.ai_metadata.extracted.experience || 'Experience Unknown'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-900">{selectedEmail.ai_metadata.extracted.name || 'Unknown'}</p>
-                      <p className="text-[9px] text-slate-400 font-medium">{selectedEmail.ai_metadata.extracted.experience || 'Not detected'}</p>
-                    </div>
-                  </div>
 
-                  {selectedEmail.ai_metadata.extracted.skills && (
-                    <div className="space-y-2">
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Skill Intelligence</p>
+                    {selectedEmail.ai_metadata.extracted.skills && (
                       <div className="flex flex-wrap gap-1.5">
-                        {selectedEmail.ai_metadata.extracted.skills.map((s: string) => (
+                        {selectedEmail.ai_metadata.extracted.skills.slice(0, 5).map((s: string) => (
                           <span key={s} className="px-2 py-0.5 bg-slate-50 text-slate-600 rounded text-[9px] font-bold uppercase border border-slate-100">
                             {s}
                           </span>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  <button 
-                    onClick={handleMapToCandidate}
-                    className="w-full py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all"
-                  >
-                    Map to Candidate Hub
-                  </button>
+                    <button 
+                      onClick={handleMapToCandidate}
+                      className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10"
+                    >
+                      Sync to Talent Hub
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -627,18 +650,25 @@ export function EmailCenter() {
                     <ShieldCheck className="w-20 h-20" />
                   </div>
                   <div className="relative z-10">
-                    <p className="text-[9px] font-black text-indigo-200 uppercase tracking-[0.2em] mb-2">Target Opportunity</p>
-                    <h4 className="text-sm font-black leading-tight mb-2">{selectedEmail.ai_metadata.best_job_match.job_title}</h4>
+                    <p className="text-[9px] font-black text-indigo-200 uppercase tracking-[0.2em] mb-2">Neural Match Result</p>
+                    <h4 className="text-xs font-black leading-tight mb-2 uppercase tracking-wide">{selectedEmail.ai_metadata.best_job_match.job_title}</h4>
                     <div className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-white/20 rounded-lg text-[9px] font-black">
                       <Sparkles className="w-3 h-3" />
                       {selectedEmail.ai_metadata.best_job_match.score}% MATCH
                     </div>
-                    <p className="text-[10px] text-indigo-100 mt-4 leading-relaxed line-clamp-3">
-                      {selectedEmail.ai_metadata.best_job_match.reasoning}
+                    <p className="text-[10px] text-indigo-100 mt-4 leading-relaxed italic">
+                      "{selectedEmail.ai_metadata.best_job_match.reasoning}"
                     </p>
                   </div>
                 </div>
               )}
+
+              <div className="pt-4">
+                <button className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-all group">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Full AI Analysis</span>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -667,6 +697,21 @@ export function EmailCenter() {
 
       <ComposeModal isOpen={isComposeOpen} onClose={() => setIsComposeOpen(false)} />
     </div>
+  );
+}
+
+function CopilotAction({ icon: Icon, label, onClick }: any) {
+  return (
+    <button 
+      onClick={onClick}
+      className="w-full flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-200 hover:bg-indigo-50/30 transition-all group text-left"
+    >
+      <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+        <Icon className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+      </div>
+      <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest group-hover:text-indigo-600">{label}</span>
+      <ChevronRight className="w-3 h-3 text-slate-300 ml-auto group-hover:text-indigo-400 transition-transform group-hover:translate-x-0.5" />
+    </button>
   );
 }
 

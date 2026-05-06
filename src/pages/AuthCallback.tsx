@@ -63,6 +63,7 @@ export default function AuthCallback() {
                   access_token: providerToken,
                   refresh_token: refreshToken,
                   connected: true,
+                  sync_status: 'TOKEN_PERSISTED',
                   updated_at: new Date().toISOString()
                 },
                 {
