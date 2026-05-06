@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { Link } from 'react-router-dom';
 import { 
   Mail, Search, RefreshCw, BrainCircuit, User, FileText, CheckCircle, 
   Send, Edit, Sparkles, Loader2, Star, Archive, Trash2, SendHorizontal, 
@@ -49,10 +50,28 @@ export function EmailCenter() {
   useEffect(() => {
     async function checkConnection() {
       const { data: { session } } = await supabase.auth.getSession();
-      setIsConnected(!!session?.user?.id && (session.user.app_metadata?.provider === 'google' || session.user.identities?.some(id => id.provider === 'google')));
-      setHasToken(!!session?.provider_token);
+      const isGoogleLinked = !!session?.user?.id && (
+        session.user.app_metadata?.provider === 'google' || 
+        session.user.identities?.some(id => id.provider === 'google')
+      );
       
-      if (session?.provider_token) {
+      const sessionToken = session?.provider_token;
+      
+      // Also check profile metadata for persisted token if session one is missing
+      let hasPersistedToken = false;
+      if (session?.user?.id) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('metadata')
+          .eq('id', session.user.id)
+          .maybeSingle();
+        hasPersistedToken = !!profile?.metadata?.google_token;
+      }
+
+      setIsConnected(isGoogleLinked);
+      setHasToken(!!sessionToken || hasPersistedToken);
+      
+      if (sessionToken || hasPersistedToken) {
         handleRefresh();
       }
     }
@@ -285,7 +304,7 @@ export function EmailCenter() {
       </div>
 
       {/* 2. MIDDLE PANEL: THREAD LIST */}
-      <div className="w-96 bg-white border-r border-slate-200 flex flex-col min-w-0 flex-shrink-0">
+      <div className="w-96 bg-white border-r border-slate-200 flex flex-col min-w-0 flex-shrink-0 overflow-hidden">
         <div className="p-6 border-b border-slate-100 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
@@ -329,12 +348,12 @@ export function EmailCenter() {
               <p className="text-xs text-slate-400 mt-2 leading-relaxed">
                 Connect your account in Settings to sync communications.
               </p>
-              <a 
-                href="/settings"
+              <Link 
+                to="/settings"
                 className="mt-6 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-900/10"
               >
                 Go to Settings
-              </a>
+              </Link>
             </div>
           ) : filteredThreads.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
@@ -390,13 +409,13 @@ export function EmailCenter() {
                   >
                     {isRefreshing ? 'Syncing...' : 'Depth Sync'}
                   </button>
-                  <a 
-                    href="/settings"
+                  <Link 
+                    to="/settings"
                     className="py-2 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all font-bold text-center flex items-center justify-center gap-1"
                   >
                     <RefreshCw className="w-3 h-3" />
                     Reset Link
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

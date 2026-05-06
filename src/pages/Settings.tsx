@@ -47,7 +47,19 @@ export default function Settings() {
     async function checkGmail() {
       if (isSupabaseConfigured()) {
         const { data: { session } } = await supabase.auth.getSession();
-        setGmailConnected(!!session?.provider_token);
+        const sessionToken = session?.provider_token;
+        
+        let hasPersistedToken = false;
+        if (session?.user?.id) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('metadata')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          hasPersistedToken = !!profile?.metadata?.google_token;
+        }
+
+        setGmailConnected(!!sessionToken || hasPersistedToken);
       }
     }
     checkGmail();
@@ -84,7 +96,7 @@ export default function Settings() {
             access_type: 'offline',
             prompt: 'consent'
           },
-          redirectTo: window.location.origin + '/settings',
+          redirectTo: window.location.origin + '/#/auth/callback',
         },
       });
 
@@ -303,7 +315,7 @@ export default function Settings() {
                       </p>
                       <div className="mt-4 flex items-center gap-3">
                         <code className="px-4 py-2 bg-slate-900 text-indigo-400 rounded-xl text-[10px] font-mono break-all border border-slate-800 select-all">
-                          {window.location.origin}/email
+                          {window.location.origin}/auth/callback
                         </code>
                         <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest border-b border-amber-300">Copy this exact URL</span>
                       </div>

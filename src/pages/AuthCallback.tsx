@@ -9,7 +9,7 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuth = async () => {
       try {
-        // Supabase handles the hash fragment, but we can also be explicit
+        // With HashRouter + Supabase, the session might already be established by the time this mounts
         const { data, error } = await supabase.auth.getSession();
 
         if (error) throw error;
@@ -17,43 +17,48 @@ export default function AuthCallback() {
         if (data.session) {
           toast.success('Neural Link Established.');
           
-          // CAPTURE GOOGLE TOKEN FOR BACKEND AGENTS
           const googleToken = data.session.provider_token;
           const { user } = data.session;
           
           if (googleToken) {
-            await supabase.from('profiles').update({
+            await supabase.from('profiles').upsert({
+              id: user.id,
               metadata: { 
                 google_token: googleToken,
                 last_auth: new Date().toISOString()
-              }
-            }).eq('id', user.id);
+              },
+              email: user.email,
+              updated_at: new Date().toISOString()
+            });
           }
 
-          // Redirect to home dashboard, where UI handles role-based display
-          navigate('/');
+          // Force redirect to email center for immediate sync gratification
+          navigate('/email');
         } else {
-          // If no session, wait a bit or try to refresh
-          const { data: userRes } = await supabase.auth.getUser();
-          if (userRes.user) {
-            navigate('/');
-          } else {
-            console.warn("No session found in callback");
-            // Only redirect if we've waited a bit
-            const timeout = setTimeout(() => navigate('/login'), 2000);
-            return () => clearTimeout(timeout);
+          // If no session immediately, wait for the auth state change to trigger
+          // This handles cases where HashRouter might delay the hash processing slightly
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+              subscription.unsubscribe();
+              navigate('/email');
+            }
+          });
+
+          // Timeout fallback
+          const timeout = setTimeout(() => {
+            subscription.unsubscribe();
+            navigate('/login');
+          }, 5000);
+
+          return () => {
+            subscription.unsubscribe();
+            clearTimeout(timeout);
           }
         }
       } catch (err: any) {
         console.error("Auth error:", err);
         toast.error("Auth failed: " + err.message);
         navigate('/login');
-      } finally {
-        // CLEAN UP: Scrub tokens from URL immediately
-        if (window.location.hash.includes('access_token')) {
-          // Just remove the second hash part if possible, or reset to base hash
-          window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/');
-        }
       }
     };
 
