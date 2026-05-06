@@ -84,13 +84,13 @@ export default function Settings() {
             access_type: 'offline',
             prompt: 'consent'
           },
-          redirectTo: window.location.origin + '/email',
+          redirectTo: window.location.origin + '/settings',
         },
       });
 
       if (error) throw error;
       
-      toast.success('Connecting to Google services...');
+      toast.success('Initiating secure neural link...');
     } catch (err: any) {
       toast.error(err.message || 'Gmail connection failed');
     } finally {
@@ -99,9 +99,20 @@ export default function Settings() {
   };
 
   const disconnectGmail = async () => {
-    await supabase.auth.signOut();
-    setGmailConnected(false);
-    toast.info('Gmail integration disconnected (Signed out)');
+    setLoading(true);
+    try {
+      // Clear token by signing out
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      setGmailConnected(false);
+      toast.success('Gmail session terminated. Re-auth required for fresh scopes.');
+      window.location.reload();
+    } catch (err: any) {
+      toast.error("Cleanup failed: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

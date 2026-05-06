@@ -12,7 +12,7 @@ import { JobType, enqueueJob } from "./queueService";
  * Connects to Google Graph API, fetches messages, and stores in CRM.
  */
 
-export async function syncGmailInbox() {
+export async function syncGmailInbox(force: boolean = false) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.provider_token;
 
@@ -21,7 +21,7 @@ export async function syncGmailInbox() {
   }
 
   // 1. Fetch recent messages
-  const listUrl = "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=25";
+  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${force ? 100 : 25}`;
   console.log("[Gmail Sync] Initiating fetch for user ID:", session?.user?.id);
   
   const listRes = await fetch(listUrl, {
@@ -35,200 +35,186 @@ export async function syncGmailInbox() {
   }
 
   if (!listData.messages || listData.messages.length === 0) {
-    console.log("[Gmail Sync] Inbox is empty or quiet.");
-    return { count: 0, message: "Inbox is quiet." };
+    console.log("[Gmail Sync] No new signals detected in the stream.");
+    return { count: 0, message: "Inbox is optimized and quiet." };
   }
 
-  console.log(`[Gmail Sync] Found ${listData.messages.length} signals. Analyzing...`);
+  console.log(`[Gmail Sync] Found ${listData.messages.length} potential signals. Processing...`);
 
   let syncCount = 0;
+  let errorCount = 0;
 
   for (const msg of listData.messages) {
-    // Check cache
-    const { data: exist } = await supabase.from('processing_cache').select('id').eq('source_id', msg.id).maybeSingle();
-    if (exist) {
-      console.log(`[Gmail Sync] Message ${msg.id} already processed. Skipping.`);
-      continue;
-    }
-
-    const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`;
-    const detailRes = await fetch(detailUrl, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const email = await detailRes.json();
-
-    const headers = email.payload.headers;
-    const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
-    const from = headers.find((h: any) => h.name === 'From')?.value || 'Unknown';
-    const to = headers.find((h: any) => h.name === 'To')?.value || '';
-    const messageHeaderId = headers.find((h: any) => h.name === 'Message-ID' || h.name === 'Message-Id')?.value || '';
-    const senderEmail = from.match(/<(.+?)>/)?.[1] || from;
-
-    // Helper to extract body
-    const getBody = (payload: any): { html: string; text: string } => {
-      let html = "";
-      let text = "";
-      
-      const decode = (data: string) => {
-        try {
-          // Gmail uses base64url encoding
-          const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
-          const decoded = atob(b64);
-          try {
-            // Attempt UTF-8 decoding
-            return decodeURIComponent(escape(decoded));
-          } catch (e) {
-            // Fallback to raw decoded string if it's not valid UTF-8
-            return decoded;
-          }
-        } catch (e) {
-          console.error("[Gmail Sync] Decode failed for fragment", e);
-          return "";
+    try {
+      // 1. Check cache first to avoid re-work (unless forced)
+      if (!force) {
+        const { data: exist } = await supabase.from('processing_cache').select('id').eq('source_id', msg.id).maybeSingle();
+        if (exist) {
+          console.log(`[Gmail Sync] Signal ${msg.id} already exists in cache. Skipping.`);
+          continue;
         }
-      };
-
-      const parsePart = (part: any) => {
-        if (part.mimeType === 'text/plain' && part.body?.data) {
-          text += decode(part.body.data);
-        } else if (part.mimeType === 'text/html' && part.body?.data) {
-          html += decode(part.body.data);
-        }
-        
-        // Recurse into subparts
-        if (part.parts) {
-          part.parts.forEach(parsePart);
-        }
-      };
-
-      // Initial entry point for parsing
-      if (payload.parts) {
-        payload.parts.forEach(parsePart);
-      } else if (payload.body && payload.body.data) {
-        if (payload.mimeType === 'text/plain') text = decode(payload.body.data);
-        if (payload.mimeType === 'text/html') html = decode(payload.body.data);
       }
-      
-      return { html, text };
-    };
 
-    const { html, text } = getBody(email.payload);
-    
-    // Fallback if body extraction failed but snippet exists
-    const finalBodyText = text || email.snippet || "No content extracted.";
-    const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+      const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`;
+      const detailRes = await fetch(detailUrl, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const email = await detailRes.json();
 
-    if (!session?.user?.id) {
-      console.warn("[Gmail Sync] Session lost during loop. Aborting current message.");
-      continue;
-    }
-
-    const emailPayload: any = {
-      subject: subject,
-      snippet: email.snippet || '',
-      body: finalBodyText,
-      body_html: html || '',
-      body_text: text || '',
-      received_at: email.internalDate ? new Date(parseInt(email.internalDate)).toISOString() : new Date().toISOString(),
-      thread_id: email.threadId,
-      message_id: msg.id,
-      from_email: senderEmail,
-      to_email: to,
-      direction: 'inbound',
-      status: 'received',
-      user_id: session.user.id,
-      company_id: profile?.company_id,
-      message_header_id: messageHeaderId,
-      labels: email.labelIds || []
-    };
-
-    // Persist email
-    console.log(`[Gmail Sync] Attempting persistence for message: ${msg.id} (${subject})`);
-    let { error: emailError } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
-
-    if (emailError) {
-      console.error("[Gmail Sync] Upsert failed, likely schema mismatch or RLS blockage:", emailError);
-      // Fallback: simple insert
-      const { error: insertError } = await supabase.from('emails').insert(emailPayload);
-      if (insertError) {
-        console.error("[Gmail Sync] Hard failure on storage. Skipping message.", insertError);
+      if (!email || !email.payload) {
+        console.warn(`[Gmail Sync] Message ${msg.id} returned empty payload. Skipping.`);
         continue;
       }
-    }
 
-    console.log(`[Gmail Sync] Message ${msg.id} persisted. Triggering AI Enrichment.`);
+      const headers = email.payload.headers || [];
+      const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
+      const from = headers.find((h: any) => h.name === 'From')?.value || 'Unknown';
+      const to = headers.find((h: any) => h.name === 'To')?.value || '';
+      const messageHeaderId = headers.find((h: any) => h.name === 'Message-ID' || h.name === 'Message-Id')?.value || '';
+      const senderEmail = from.match(/<(.+?)>/)?.[1] || from;
 
-    // 3. ENQUEUE FOR NESTOR AGENT CLASSIFICATION
-    // Trigger real AI analysis now to populate the UI metadata
-    try {
-      const aiResponse = await callAISecureProxy(`Analyze this email for a recruitment CRM.
-          Subject: ${subject}
-          Snippet: ${email.snippet}
-          From: ${from}
+      // RECURSIVE BODY EXTRACTION
+      const getBody = (payload: any): { html: string; text: string } => {
+        let html = "";
+        let text = "";
+        
+        const decode = (data: string) => {
+          try {
+            const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
+            const decoded = atob(b64);
+            try {
+              return decodeURIComponent(escape(decoded));
+            } catch (e) {
+              return decoded;
+            }
+          } catch (e) {
+            return "";
+          }
+        };
+
+        const parsePart = (part: any) => {
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            text += decode(part.body.data);
+          } else if (part.mimeType === 'text/html' && part.body?.data) {
+            html += decode(part.body.data);
+          }
           
-          Return JSON:
-          {
-            "intent": "candidate_application | job_query | outreach | spam",
-            "score": number (0-100 matching lead quality),
-            "extracted": {
-              "name": "full name",
-              "skills": ["skill1", "skill2"],
-              "experience": "years/summary"
-            },
-            "reply": "draft response"
-          }`);
-       
-       const aiMeta = JSON.parse(aiResponse.replace(/```json|```/g, ''));
-       
-       // Map intent to category
-       let category = 'general';
-       if (aiMeta.intent === 'candidate_application') category = 'recruitment';
-       else if (aiMeta.intent === 'job_query') category = 'client';
-       else if (aiMeta.intent === 'outreach') category = 'outreach';
-       
-       const aiPriority = aiMeta.score || 0;
+          if (part.parts) {
+            part.parts.forEach(parsePart);
+          }
+        };
 
-       // UNIFIED BRAIN: Auto-match against active jobs if this is an application
-       if (aiMeta.intent === 'candidate_application') {
-         const { data: openJobs } = await supabase.from('jobs').select('*').eq('status', 'open').limit(5);
-         if (openJobs && openJobs.length > 0) {
-           const { scoreCandidateForJob } = await import('./intelligenceService');
-           let bestMatch = null;
-           for (const job of openJobs) {
-             const match = await scoreCandidateForJob(job, aiMeta.extracted);
-             if (!bestMatch || match.score > bestMatch.score) {
-               bestMatch = { job, match };
-             }
-           }
-           
-           if (bestMatch && bestMatch.match.score >= 50) {
-             aiMeta.best_job_match = {
-               job_title: bestMatch.job.title,
-               score: bestMatch.match.score,
-               reasoning: bestMatch.match.reasoning
-             };
-             // Upgrade the reply with match context
-             aiMeta.reply = `Hi ${aiMeta.extracted.name || 'there'},\n\nI've analyzed your profile against our open roles. You look like a ${bestMatch.match.score}% match for our ${bestMatch.job.title} position! ${bestMatch.match.reasoning}\n\nOur team is reviewing your details now.`;
-           }
-         }
-       }
+        if (payload.parts) {
+          payload.parts.forEach(parsePart);
+        } else if (payload.body && payload.body.data) {
+          if (payload.mimeType === 'text/plain') text = decode(payload.body.data);
+          if (payload.mimeType === 'text/html') html = decode(payload.body.data);
+        }
+        
+        return { html, text };
+      };
 
-       await supabase.from('emails').update({ 
-         ai_metadata: aiMeta,
-         category: category,
-         ai_priority: aiPriority
-       }).eq('message_id', msg.id);
-    } catch (e) {
-      console.error("AI Enrichment and Unified Matching failed", e);
+      const { html, text } = getBody(email.payload);
+      const finalBodyText = text || email.snippet || "No content extracted.";
+      
+      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+
+      if (!session?.user?.id) {
+        console.warn("[Gmail Sync] Session lost during iteration. Aborting.");
+        break;
+      }
+
+      const emailPayload: any = {
+        subject: subject,
+        snippet: email.snippet || '',
+        body: finalBodyText,
+        body_html: html || '',
+        body_text: text || '',
+        received_at: email.internalDate ? new Date(parseInt(email.internalDate)).toISOString() : new Date().toISOString(),
+        thread_id: email.threadId,
+        message_id: msg.id,
+        from_email: senderEmail,
+        to_email: to,
+        direction: 'inbound',
+        status: 'received',
+        user_id: session.user.id,
+        company_id: profile?.company_id,
+        message_header_id: messageHeaderId,
+        labels: email.labelIds || []
+      };
+
+      // 2. Persist email with strictly enforced unique message_id
+      console.log(`[Gmail Sync] Attempting persistence for signal: ${msg.id} (${subject})`);
+      const { error: upsertError } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
+
+      if (upsertError) {
+        console.error(`[Gmail Sync] Storage failure for ${msg.id}. Check RLS or Schema.`, upsertError);
+        errorCount++;
+        continue;
+      }
+
+      // 3. Mark as processed to prevent duplicate enrichment costs
+      await supabase.from('processing_cache').insert({
+        source_id: msg.id,
+        type: 'email',
+        metadata: { subject }
+      });
+
+      console.log(`[Gmail Sync] Success: Signal ${msg.id} mirrored to neural store.`);
+      syncCount++;
+
+      // 4. Trigger Async AI Enrichment (Non-blocking for sync performance)
+      triggerAIEnrichment(msg.id, email, subject, from);
+
+    } catch (msgErr) {
+      console.error(`[Gmail Sync] Message recovery failed for ${msg.id}:`, msgErr);
+      errorCount++;
     }
-
-    await enqueueJob(JobType.GMAIL_EVENT, email);
-    
-    // Mark as processed
-    await supabase.from('processing_cache').insert({ source_id: msg.id, type: 'email' });
-    syncCount++;
   }
 
-  return { count: syncCount, message: `Synced ${syncCount} new messages.` };
+  return { 
+    count: syncCount, 
+    errors: errorCount,
+    message: `Intelligence sync concluded. ${syncCount} signals synchronized.` 
+  };
+}
+
+async function triggerAIEnrichment(messageId: string, email: any, subject: string, from: string) {
+  try {
+    const aiResponse = await callAISecureProxy(`Analyze this email for a recruitment CRM.
+        Subject: ${subject}
+        Snippet: ${email.snippet}
+        From: ${from}
+        
+        Return JSON ONLY:
+        {
+          "intent": "candidate_application | job_query | outreach | spam",
+          "score": number (0-100 matching lead quality),
+          "extracted": {
+            "name": "full name",
+            "skills": ["skill1", "skill2"],
+            "experience": "years summary"
+          },
+          "reply": "draft response"
+        }`);
+     
+     const cleanJson = aiResponse.replace(/```json|```/g, '').trim();
+     const aiMeta = JSON.parse(cleanJson);
+     
+     let category = 'general';
+     if (aiMeta.intent === 'candidate_application') category = 'recruitment';
+     else if (aiMeta.intent === 'job_query') category = 'client';
+     else if (aiMeta.intent === 'outreach') category = 'outreach';
+     
+     await supabase.from('emails').update({ 
+       ai_metadata: aiMeta,
+       category: category,
+       ai_priority: aiMeta.score || 0
+     }).eq('message_id', messageId);
+     
+  } catch (e) {
+    console.error(`[AI Enrichment] Failed for ${messageId}:`, e);
+  }
 }
 
 /**

@@ -44,11 +44,14 @@ export function EmailCenter() {
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string>('idle');
   const [isConnected, setIsConnected] = useState<boolean>(true);
+  const [hasToken, setHasToken] = useState<boolean>(true);
 
   useEffect(() => {
     async function checkConnection() {
       const { data: { session } } = await supabase.auth.getSession();
-      setIsConnected(!!session?.provider_token);
+      setIsConnected(!!session?.user?.id && (session.user.app_metadata?.provider === 'google' || session.user.identities?.some(id => id.provider === 'google')));
+      setHasToken(!!session?.provider_token);
+      
       if (session?.provider_token) {
         handleRefresh();
       }
@@ -100,20 +103,25 @@ export function EmailCenter() {
     }
   };
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (force: boolean = false) => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     setSyncStatus('syncing');
     try {
       const { syncGmailInbox } = await import('@/services/gmailService');
-      const result = await syncGmailInbox();
+      const result = await syncGmailInbox(force);
       setLastSynced(new Date().toLocaleTimeString());
       setSyncStatus('success');
-      toast.success(result.message);
+      
+      const syncInfo = result.count > 0 
+        ? `${result.count} signals synchronized.` 
+        : force ? "Depth sync complete. No new signals found." : "No new activity detected.";
+        
+      toast.success(syncInfo);
       await fetchEmails();
     } catch (err: any) {
       setSyncStatus('failed');
-      toast.error(err.message || 'Sync failed');
+      toast.error(err.message || 'Signal sync failed');
     } finally {
       setIsRefreshing(false);
     }
@@ -287,7 +295,7 @@ export function EmailCenter() {
               </div>
             </h2>
             <button 
-              onClick={handleRefresh}
+              onClick={() => handleRefresh()}
               disabled={isRefreshing}
               className="p-2 hover:bg-slate-50 rounded-xl transition-all text-slate-400"
             >
@@ -350,7 +358,7 @@ export function EmailCenter() {
                   <div className="flex justify-between items-center text-[10px]">
                     <span className="text-slate-400">Gmail Linked</span>
                     <span className={`font-bold ${isConnected ? 'text-emerald-500' : 'text-red-500'}`}>
-                      {isConnected ? 'YES' : 'NO'}
+                      {isConnected ? (hasToken ? 'YES (ACTIVE)' : 'YES (STALE)') : 'NO'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[10px]">
@@ -369,10 +377,11 @@ export function EmailCenter() {
                   </div>
                 </div>
                 <button 
-                  onClick={handleRefresh}
-                  className="w-full mt-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-slate-50 transition-all font-bold"
+                  onClick={() => handleRefresh(true)}
+                  disabled={isRefreshing}
+                  className="w-full mt-4 py-2 bg-white border border-slate-200 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-slate-50 transition-all font-bold disabled:opacity-50"
                 >
-                  Force Signal Re-Sync
+                  {isRefreshing ? 'Syncing...' : 'Force Signal Depth Re-Sync'}
                 </button>
               </div>
             </div>
@@ -594,7 +603,7 @@ export function EmailCenter() {
               </p>
             </div>
             <button 
-              onClick={handleRefresh}
+              onClick={() => handleRefresh()}
               className="px-8 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
             >
               Force Neural Sync
