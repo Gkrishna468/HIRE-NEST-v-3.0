@@ -14,7 +14,21 @@ import { JobType, enqueueJob } from "./queueService";
 
 export async function syncGmailInbox(force: boolean = false) {
   const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.provider_token;
+  let token = session?.provider_token;
+  const userId = session?.user?.id;
+
+  if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
+
+  // Robust Token Recovery (check profile metadata if session token is missing)
+  if (!token) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('provider_token, metadata')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    token = profile?.provider_token || profile?.metadata?.google_token;
+  }
 
   if (!token) {
     throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");

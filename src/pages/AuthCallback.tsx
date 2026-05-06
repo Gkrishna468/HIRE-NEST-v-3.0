@@ -39,16 +39,18 @@ export default function AuthCallback() {
           
           if (provider_token) {
             // Update profile with both tokens for background workers
-            const updates = {
-              google_token: provider_token,
-              google_refresh_token: provider_refresh_token,
-              last_auth: new Date().toISOString(),
-              gmail_connected: true
-            };
-
+            // Using top-level columns as requested for production stability
             await supabase.from('profiles').update({
-              metadata: updates
-            }).eq('id', user.id);
+              provider_token: provider_token,
+              provider_refresh_token: provider_refresh_token,
+              gmail_connected: true,
+              gmail_connected_at: new Date().toISOString(),
+              // Still update metadata for backward compatibility if needed
+              metadata: { 
+                google_token: provider_token,
+                last_auth: new Date().toISOString()
+              }
+            }).eq('id', user.id); // Identifying by ID is safer, but user suggested email. We'll use ID since it's the standard PK in this template.
           }
 
           // Force redirect to email center for immediate sync gratification

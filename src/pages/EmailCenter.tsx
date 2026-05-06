@@ -62,10 +62,10 @@ export function EmailCenter() {
       if (session?.user?.id) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('metadata')
+          .select('metadata, provider_token')
           .eq('id', session.user.id)
           .maybeSingle();
-        hasPersistedToken = !!profile?.metadata?.google_token;
+        hasPersistedToken = !!profile?.metadata?.google_token || !!profile?.provider_token;
       }
 
       setIsConnected(isGoogleLinked);
