@@ -51,7 +51,8 @@ export default function AuthCallback() {
       } finally {
         // CLEAN UP: Scrub tokens from URL immediately
         if (window.location.hash.includes('access_token')) {
-          window.history.replaceState(null, '', '/');
+          // Just remove the second hash part if possible, or reset to base hash
+          window.history.replaceState(null, '', window.location.pathname + window.location.search + '#/');
         }
       }
     };

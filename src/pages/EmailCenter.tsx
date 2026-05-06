@@ -228,7 +228,7 @@ export function EmailCenter() {
   const selectedEmail = selectedThreadMessages[selectedThreadMessages.length - 1];
 
   return (
-    <div className="flex h-[calc(100vh-64px)] bg-slate-50 overflow-hidden font-sans">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
       {/* 1. LEFT SIDEBAR: FOLDERS */}
       <div className="w-64 bg-white border-r border-slate-200 flex flex-col">
         <div className="p-6">
@@ -285,7 +285,7 @@ export function EmailCenter() {
       </div>
 
       {/* 2. MIDDLE PANEL: THREAD LIST */}
-      <div className="w-96 bg-white border-r border-slate-200 flex flex-col">
+      <div className="w-96 bg-white border-r border-slate-200 flex flex-col min-w-0 flex-shrink-0">
         <div className="p-6 border-b border-slate-100 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
@@ -418,7 +418,7 @@ export function EmailCenter() {
         {selectedThreadId ? (
           <div className="flex h-full">
             {/* THREAD VIEW */}
-            <div className="flex-1 flex flex-col border-r border-slate-100">
+            <div className="flex-1 flex flex-col border-r border-slate-100 min-w-0">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h1 className="text-xl font-black text-slate-900 leading-tight">{selectedEmail?.subject}</h1>
@@ -515,7 +515,7 @@ export function EmailCenter() {
             </div>
 
             {/* AI INTELLIGENCE PANEL */}
-            <div className="w-80 bg-slate-50/50 p-6 space-y-6 overflow-y-auto custom-scrollbar">
+            <div className="w-80 bg-slate-50/50 p-6 space-y-6 overflow-y-auto custom-scrollbar flex-shrink-0">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-white">
                   <BrainCircuit className="w-4 h-4" />
