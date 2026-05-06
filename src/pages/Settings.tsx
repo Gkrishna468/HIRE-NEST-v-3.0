@@ -46,17 +46,30 @@ export default function Settings() {
   useEffect(() => {
     async function checkGmail() {
       if (isSupabaseConfigured()) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('gmail_connected, provider_token')
-          .eq('email', user.email || '')
-          .maybeSingle();
-        
-        const gmailConnected = !!profile?.gmail_connected && !!profile?.provider_token;
-        setGmailConnected(gmailConnected);
+          if (!user?.email) {
+            setGmailConnected(false);
+            return;
+          }
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select(`
+              gmail_connected,
+              provider_token,
+              provider_refresh_token
+            `)
+            .eq("email", user.email)
+            .maybeSingle();
+
+          const connected = profile?.gmail_connected === true && !!profile?.provider_token;
+          setGmailConnected(connected);
+        } catch (err) {
+          console.error(err);
+          setGmailConnected(false);
+        }
       }
     }
     checkGmail();
@@ -118,6 +131,16 @@ export default function Settings() {
   const disconnectGmail = async () => {
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        await supabase.from('profiles').update({
+          gmail_connected: false,
+          provider_token: null,
+          provider_refresh_token: null,
+          updated_at: new Date().toISOString()
+        }).eq('email', user.email);
+      }
+
       // Clear token by signing out
       const { error } = await supabase.auth.signOut();
       if (error) throw error;

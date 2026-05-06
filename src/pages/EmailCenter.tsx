@@ -44,37 +44,65 @@ export function EmailCenter() {
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string>('idle');
-  const [isConnected, setIsConnected] = useState<boolean>(true);
-  const [hasToken, setHasToken] = useState<boolean>(true);
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [loadingConnection, setLoadingConnection] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
 
   useEffect(() => {
-    async function checkConnection() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    const checkConnection = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('gmail_connected, provider_token')
-        .eq('email', user.email || '')
-        .maybeSingle();
-      
-      const gmailConnected = !!profile?.gmail_connected && !!profile?.provider_token;
-      
-      setIsConnected(gmailConnected);
-      setHasToken(gmailConnected);
-      
-      if (gmailConnected) {
-        handleRefresh();
+        if (!user?.email) {
+          setGmailConnected(false);
+          setIsConnected(false);
+          setHasToken(false);
+          return;
+        }
+
+        const { data: profile, error } = await supabase
+          .from("profiles")
+          .select(`
+            gmail_connected,
+            provider_token,
+            provider_refresh_token
+          `)
+          .eq("email", user.email)
+          .maybeSingle();
+
+        if (error) {
+          console.error(error);
+          setGmailConnected(false);
+          setIsConnected(false);
+          setHasToken(false);
+          return;
+        }
+
+        const connected = profile?.gmail_connected === true && !!profile?.provider_token;
+        setGmailConnected(connected);
+        setIsConnected(connected);
+        setHasToken(connected);
+
+        if (connected) {
+          handleRefresh();
+        }
+      } catch (err) {
+        console.error(err);
+        setGmailConnected(false);
+        setIsConnected(false);
+        setHasToken(false);
+      } finally {
+        setLoadingConnection(false);
       }
-    }
-    
+    };
+
     fetchEmails();
     checkConnection();
     
     // Background Signal Polling (Every 3 minutes)
     const pollInterval = setInterval(() => {
-      // Need to use a ref or check state if possible, but for simplicity:
-      if (syncStatus !== 'syncing') {
+      if (syncStatus !== 'syncing' && gmailConnected) {
         handleRefresh();
       }
     }, 180000);
@@ -326,12 +354,12 @@ export function EmailCenter() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {isLoading ? (
+          {loadingConnection || isLoading ? (
             <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
               <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Neural Sync Active</span>
             </div>
-          ) : !isConnected ? (
+          ) : !gmailConnected ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               <div className="w-16 h-16 bg-red-50 rounded-3xl flex items-center justify-center mb-4 text-red-500">
                 <AlertCircle className="w-8 h-8" />
