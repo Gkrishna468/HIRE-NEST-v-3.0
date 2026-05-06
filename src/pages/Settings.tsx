@@ -96,7 +96,7 @@ export default function Settings() {
             access_type: 'offline',
             prompt: 'consent'
           },
-          redirectTo: window.location.origin + '/#/auth/callback',
+          redirectTo: window.location.origin + '/auth/callback',
         },
       });
 

@@ -9,8 +9,25 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuth = async () => {
       try {
-        // With HashRouter + Supabase, the session might already be established by the time this mounts
-        const { data, error } = await supabase.auth.getSession();
+        // First try standard session check
+        let { data, error } = await supabase.auth.getSession();
+        
+        // If no session, check if tokens are in the fragment (for redirected HashRouter)
+        if (!data.session) {
+          const hashPart = window.location.hash.split('?')[1] || window.location.hash.split('#').pop() || '';
+          const params = new URLSearchParams(hashPart);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+          
+          if (accessToken && refreshToken) {
+            const { data: setRes, error: setErr } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken
+            });
+            data = setRes;
+            error = setErr;
+          }
+        }
 
         if (error) throw error;
 

@@ -111,7 +111,13 @@ export const getSupabase = (): SupabaseClient => {
   // Create instance if it doesn't exist or if current one is a proxy
   // (We check if it's a real client by looking for a property that existence check wouldn't be on a proxy)
   if (!supabaseInstance || (supabaseInstance as any).__isProxy) {
-    supabaseInstance = createClient(url, key);
+    supabaseInstance = createClient(url, key, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
   }
   
   return supabaseInstance;
