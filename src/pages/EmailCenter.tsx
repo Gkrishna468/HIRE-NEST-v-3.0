@@ -39,6 +39,7 @@ export function EmailCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState<'inbox' | 'recruitment' | 'sent' | 'archived'>('inbox');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
@@ -47,6 +48,25 @@ export function EmailCenter() {
   const [gmailConnected, setGmailConnected] = useState(false);
   const [loadingConnection, setLoadingConnection] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    if (selectedThreadId) {
+      const threadMsgs = emails.filter(e => e.thread_id === selectedThreadId);
+      if (threadMsgs.length > 0) {
+        setExpandedMessages(new Set([threadMsgs[threadMsgs.length - 1].id])); // Expand latest
+      }
+    }
+  }, [selectedThreadId, emails.length]);
+
+  const toggleMessageExpansion = (msgId: string) => {
+    const next = new Set(expandedMessages);
+    if (next.has(msgId)) {
+      next.delete(msgId);
+    } else {
+      next.add(msgId);
+    }
+    setExpandedMessages(next);
+  };
 
   useEffect(() => {
     const checkConnection = async () => {
@@ -461,8 +481,9 @@ export function EmailCenter() {
             <div className="flex-1 flex flex-col border-r border-slate-100 min-w-0">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h1 className="text-xl font-black text-slate-900 leading-tight">{selectedEmail?.subject}</h1>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-widest mb-3 inline-block">Conversation Intelligence Active</div>
+                  <h1 className="text-2xl font-black text-slate-900 leading-tight tracking-tight">{selectedEmail?.subject}</h1>
+                  <div className="flex items-center gap-2 mt-2">
                     <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center">
                       <User className="w-2.5 h-2.5 text-white" />
                     </div>
@@ -470,6 +491,19 @@ export function EmailCenter() {
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      if (expandedMessages.size === selectedThreadMessages.length) {
+                        setExpandedMessages(new Set());
+                      } else {
+                        setExpandedMessages(new Set(selectedThreadMessages.map(m => m.id)));
+                      }
+                    }}
+                    className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400"
+                    title="Toggle Expand All"
+                  >
+                    <Filter className="w-5 h-5" />
+                  </button>
                   <button className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400"><Star className="w-5 h-5" /></button>
                   <button className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400"><Trash2 className="w-5 h-5" /></button>
                   <button className="p-2.5 hover:bg-slate-50 rounded-xl text-slate-400"><MoreVertical className="w-5 h-5" /></button>
@@ -477,39 +511,58 @@ export function EmailCenter() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-slate-50/30 custom-scrollbar">
-                <div className="max-w-3xl mx-auto space-y-6">
-                  {selectedThreadMessages.map((msg, idx) => (
-                    <motion.div 
-                      key={msg.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div className={`max-w-[85%] rounded-[1.5rem] p-6 shadow-sm border ${
-                        msg.direction === 'outbound' 
-                          ? 'bg-slate-900 text-white border-slate-800 rounded-tr-none' 
-                          : 'bg-white text-slate-700 border-slate-200/60 rounded-tl-none'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-3">
-                          <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
-                            {msg.direction === 'outbound' ? 'Sent via HireNest' : 'Received message'}
-                          </span>
-                          <span className="text-[9px] opacity-40 ml-auto font-bold uppercase">
-                            {new Date(msg.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                <div className="max-w-4xl mx-auto space-y-4">
+                  {selectedThreadMessages.map((msg, idx) => {
+                    const isExpanded = expandedMessages.has(msg.id) || idx === selectedThreadMessages.length - 1;
+                    return (
+                      <motion.div 
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white rounded-[1.5rem] shadow-sm border border-slate-200/60 overflow-hidden"
+                      >
+                        <div 
+                          onClick={() => toggleMessageExpansion(msg.id)}
+                          className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${msg.direction === 'outbound' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              {msg.from_email.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest">{msg.from_email.split('<')[0].trim() || msg.from_email}</p>
+                              <p className="text-[9px] text-slate-400 font-bold">{new Date(msg.received_at).toLocaleString()}</p>
+                            </div>
+                          </div>
+                          {!isExpanded && (
+                            <p className="flex-1 px-8 text-xs text-slate-400 truncate italic">
+                              "{msg.snippet}"
+                            </p>
+                          )}
+                          <div className={`p-1.5 rounded-lg transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                            <ChevronRight className="w-4 h-4 text-slate-300" />
+                          </div>
                         </div>
-                        <div className="text-[14px] leading-relaxed whitespace-pre-wrap font-medium">
-                          {msg.body_text || msg.body || msg.snippet}
-                        </div>
-                        {msg.body_html && (
-                          <div className="mt-4 p-4 bg-slate-50/50 rounded-xl text-[10px] text-slate-400 font-black cursor-pointer hover:bg-slate-100 transition-colors inline-flex items-center gap-2">
-                            <FileText className="w-3 h-3" />
-                            VIEW ORIGINAL HTML VERSION
+
+                        {isExpanded && (
+                          <div className="p-8 pt-0 border-t border-slate-50">
+                            <div className="text-[14px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 py-6">
+                              {msg.body_text || msg.body || msg.snippet}
+                            </div>
+                            {msg.body_html && (
+                              <button 
+                                onClick={() => window.open(`data:text/html;charset=utf-8,${encodeURIComponent(msg.body_html || '')}`)}
+                                className="mt-4 p-4 bg-slate-50 hover:bg-slate-100 rounded-xl text-[10px] text-slate-400 font-black flex items-center gap-2 transition-all"
+                              >
+                                <FileText className="w-3 h-3" />
+                                VIEW SIGNAL SOURCE (HTML)
+                              </button>
+                            )}
                           </div>
                         )}
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -755,22 +808,17 @@ function ThreadCard({ thread, isSelected, onSelect }: any) {
       {isUnread && (
         <div className="absolute top-6 right-5 w-2 h-2 bg-indigo-600 rounded-full shadow-[0_0_10px_rgba(79,70,229,0.5)]" />
       )}
-      <div className="flex justify-between items-start mb-2">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500">
-            {latest.from_email.charAt(0).toUpperCase()}
-          </div>
-          <p className={`text-xs font-black truncate max-w-[120px] ${isUnread ? 'text-slate-900' : 'text-slate-600'}`}>
-            {latest.from_email.split('<')[0].trim() || latest.from_email}
-          </p>
-        </div>
-        <span className="text-[9px] font-bold text-slate-400 uppercase">
-          {receivedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </span>
-      </div>
-      <p className={`text-[11px] font-black leading-tight mb-1 truncate ${isUnread ? 'text-slate-900' : 'text-slate-500'}`}>
+      <p className={`text-xs font-black leading-tight mb-2 uppercase tracking-wide ${isUnread ? 'text-slate-900' : 'text-slate-500'}`}>
         {latest.subject}
       </p>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-5 h-5 rounded-lg bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500">
+          {latest.from_email.charAt(0).toUpperCase()}
+        </div>
+        <p className={`text-[10px] font-bold truncate ${isUnread ? 'text-slate-900' : 'text-slate-600'}`}>
+          {latest.from_email.split('<')[0].trim() || latest.from_email}
+        </p>
+      </div>
       <p className="text-[10px] text-slate-400 line-clamp-1 font-medium italic mb-3 opacity-80">
         "{latest.snippet}"
       </p>
