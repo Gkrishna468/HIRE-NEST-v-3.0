@@ -4,22 +4,21 @@ import App from './App.tsx';
 import './index.css';
 
 // Handle Auth callbacks and clean URLs for HashRouter
-if (window.location.pathname !== '/' && window.location.pathname !== '/index.html') {
-  const cleanPath = window.location.pathname;
-  const search = window.location.search;
-  const existingHash = window.location.hash;
-  
-  // Clear the path part, move into hash
+const pathname = window.location.pathname;
+const search = window.location.search;
+const hash = window.location.hash;
+
+if (pathname !== '/' && pathname !== '/index.html') {
+  // If we have a path like /auth/callback, we want it to become #/auth/callback
+  // preservation of search/hash is critical for OAuth fragments
   window.history.replaceState(null, '', '/');
   
-  if (cleanPath === '/auth/callback') {
-    // For Supabase OAuth, preserve the hash data so getSession can find it
-    // We convert the fragment to search params so it's easier to parse if needed
-    const fragment = existingHash.replace(/^#/, '');
-    const connector = fragment.includes('?') ? '&' : '?';
-    window.location.hash = `#/auth/callback${connector}${fragment}`;
+  if (pathname === '/auth/callback') {
+    // Standardize OAuth callback for HashRouter
+    // We preserve search (?code=...) and fragment (#access_token=...)
+    window.location.hash = `#/auth/callback${search}${hash}`;
   } else {
-    window.location.hash = `#${cleanPath}${search}${existingHash}`;
+    window.location.hash = `#${pathname}${search}${hash}`;
   }
 }
 

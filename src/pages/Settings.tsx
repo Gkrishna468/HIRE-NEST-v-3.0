@@ -91,12 +91,20 @@ export default function Settings() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          scopes: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.send',
+          redirectTo: window.location.origin + '/auth/callback',
+          scopes: [
+            'openid',
+            'email',
+            'profile',
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.modify',
+            'https://www.googleapis.com/auth/gmail.labels',
+            'https://www.googleapis.com/auth/gmail.send'
+          ].join(' '),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent'
-          },
-          redirectTo: window.location.origin + '/auth/callback',
+          }
         },
       });
 

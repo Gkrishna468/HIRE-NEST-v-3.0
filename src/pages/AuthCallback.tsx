@@ -9,44 +9,46 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuth = async () => {
       try {
-        // First try standard session check
-        let { data, error } = await supabase.auth.getSession();
+        // 1. Try to get existing session
+        let { data: { session }, error } = await supabase.auth.getSession();
         
-        // If no session, check if tokens are in the fragment (for redirected HashRouter)
-        if (!data.session) {
-          const hashPart = window.location.hash.split('?')[1] || window.location.hash.split('#').pop() || '';
-          const params = new URLSearchParams(hashPart);
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
+        // 2. If no session, try exchanging code for session (handles OAuth redirect better)
+        if (!session && (window.location.href.includes('code=') || window.location.href.includes('access_token='))) {
+          const { data: exchangeData, error: exchangeError } = await supabase.auth.setSession({
+            access_token: new URLSearchParams(window.location.hash.split('?')[1] || window.location.hash.split('#').pop()).get('access_token') || '',
+            refresh_token: new URLSearchParams(window.location.hash.split('?')[1] || window.location.hash.split('#').pop()).get('refresh_token') || '',
+          });
           
-          if (accessToken && refreshToken) {
-            const { data: setRes, error: setErr } = await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken
-            });
-            data = setRes;
-            error = setErr;
+          if (!exchangeData.session) {
+            // Fallback to standard Supabase detection
+            const { data: res, error: err } = await supabase.auth.getSession();
+            session = res.session;
+            error = err;
+          } else {
+            session = exchangeData.session;
+            error = exchangeError;
           }
         }
 
         if (error) throw error;
 
-        if (data.session) {
+        if (session) {
           toast.success('Neural Link Established.');
           
-          const googleToken = data.session.provider_token;
-          const { user } = data.session;
+          const { user, provider_token, provider_refresh_token } = session;
           
-          if (googleToken) {
-            await supabase.from('profiles').upsert({
-              id: user.id,
-              metadata: { 
-                google_token: googleToken,
-                last_auth: new Date().toISOString()
-              },
-              email: user.email,
-              updated_at: new Date().toISOString()
-            });
+          if (provider_token) {
+            // Update profile with both tokens for background workers
+            const updates = {
+              google_token: provider_token,
+              google_refresh_token: provider_refresh_token,
+              last_auth: new Date().toISOString(),
+              gmail_connected: true
+            };
+
+            await supabase.from('profiles').update({
+              metadata: updates
+            }).eq('id', user.id);
           }
 
           // Force redirect to email center for immediate sync gratification

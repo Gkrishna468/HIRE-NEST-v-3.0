@@ -57,7 +57,7 @@ export async function syncGmailInbox(force: boolean = false) {
         }
       }
 
-      const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`;
+      const detailUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`;
       const detailRes = await fetch(detailUrl, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -132,7 +132,7 @@ export async function syncGmailInbox(force: boolean = false) {
         labels: email.labelIds || []
       };
 
-      // 2. Persist with RLS awareness
+      // 2. Persist with strict unique message_id
       const { error: upsertError } = await supabase.from('emails').upsert(emailPayload, { onConflict: 'message_id' });
 
       if (upsertError) {
