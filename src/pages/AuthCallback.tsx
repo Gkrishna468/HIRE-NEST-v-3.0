@@ -9,106 +9,71 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuth = async () => {
       try {
-        // 1. Try to get existing session
-        let { data: { session }, error } = await supabase.auth.getSession();
-        
-        // 2. If no session, try exchanging code for session (handles OAuth redirect better)
-        if (!session && (window.location.href.includes('code=') || window.location.href.includes('access_token='))) {
-          const { data: exchangeData, error: exchangeError } = await supabase.auth.setSession({
-            access_token: new URLSearchParams(window.location.hash.split('?')[1] || window.location.hash.split('#').pop()).get('access_token') || '',
-            refresh_token: new URLSearchParams(window.location.hash.split('?')[1] || window.location.hash.split('#').pop()).get('refresh_token') || '',
-          });
-          
-          if (!exchangeData.session) {
-            // Fallback to standard Supabase detection
-            const { data: res, error: err } = await supabase.auth.getSession();
-            session = res.session;
-            error = err;
-          } else {
-            session = exchangeData.session;
-            error = exchangeError;
-          }
-        }
+        const {
+          data: { session },
+          error
+        } = await supabase.auth.getSession();
 
-        if (error) throw error;
-
-        if (session) {
-          toast.success('Neural Link Established.');
-          
-          if (session.user) {
-            console.log("SESSION:", session);
-
-            const providerToken =
-              session.provider_token ||
-              (session.user as any)?.user_metadata?.provider_token ||
-              null;
-
-            const refreshToken =
-              session.provider_refresh_token ||
-              null;
-            
-            const gmailEmail = session.user.email; 
-
-            console.log("PROVIDER TOKEN:", providerToken);
-            console.log("REFRESH TOKEN:", refreshToken);
-            console.log("GMAIL EMAIL:", gmailEmail);
-
-            // Persist into authoritative gmail_accounts table
-            const { error: gmailError } = await supabase
-              .from("gmail_accounts")
-              .upsert(
-                {
-                  user_id: session.user.id,
-                  gmail_email: gmailEmail,
-                  access_token: providerToken,
-                  refresh_token: refreshToken,
-                  connected: true,
-                  sync_status: 'TOKEN_PERSISTED',
-                  updated_at: new Date().toISOString()
-                },
-                {
-                  onConflict: "user_id"
-                }
-              );
-
-            if (gmailError) {
-              console.error("GMAIL_ACCOUNTS SAVE ERROR", gmailError);
-              
-              // Fallback: Try to update profile as secondary if table missing
-              await supabase.from('profiles').update({
-                gmail_connected: true,
-                provider_token: providerToken,
-                provider_refresh_token: refreshToken,
-                updated_at: new Date().toISOString()
-              }).eq('user_id', session.user.id);
-            } else {
-              console.log("GMAIL ACCOUNT PERSISTED");
-            }
-          }
-
-          // Force redirect to email center for immediate sync gratification
-          navigate('/email');
-        } else {
-          // If no session immediately, wait for the auth state change to trigger
-          // This handles cases where HashRouter might delay the hash processing slightly
-          const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_IN' && session) {
+        if (error || !session) {
+          console.error("NO SESSION FOUND IN CALLBACK");
+          // If no session immediately, wait briefly or redirect
+          const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+            if (event === 'SIGNED_IN' && newSession) {
               subscription.unsubscribe();
-              navigate('/email');
+              window.location.reload(); // Refresh to catch session properly
             }
           });
-
-          // Timeout fallback
-          const timeout = setTimeout(() => {
+          
+          setTimeout(() => {
             subscription.unsubscribe();
-            navigate('/login');
+            if (!session) navigate('/login');
           }, 5000);
-
-          return () => {
-            subscription.unsubscribe();
-            clearTimeout(timeout);
-          }
+          return;
         }
+
+        const accessToken =
+          session.provider_token ||
+          session.user?.user_metadata?.provider_token ||
+          null;
+
+        const refreshToken =
+          session.provider_refresh_token ||
+          session.user?.user_metadata?.provider_refresh_token ||
+          null;
+
+        const gmailEmail =
+          session.user?.user_metadata?.email ||
+          session.user?.email;
+
+        console.log("SESSION:", session);
+        console.log("ACCESS_TOKEN:", accessToken ? "PRESENT" : "MISSING");
+        console.log("REFRESH_TOKEN:", refreshToken ? "PRESENT" : "MISSING");
+        console.log("GMAIL_EMAIL:", gmailEmail);
+
+        const { error: upsertError } = await supabase
+          .from("gmail_accounts")
+          .upsert({
+            user_id: session.user.id,
+            gmail_email: gmailEmail,
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            connected: true,
+            sync_status: "READY",
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: "user_id"
+          });
+
+        if (upsertError) {
+          console.error("UPSERT ERROR:", upsertError);
+          toast.error("Failed to persist Gmail credentials.");
+        } else {
+          console.log("GMAIL_ACCOUNT PERSISTED SUCCESSFULLY");
+          toast.success('Neural Link Established.');
+        }
+
+        // Redirect to email center for immediate sync
+        navigate('/email');
       } catch (err: any) {
         console.error("Auth error:", err);
         toast.error("Auth failed: " + err.message);

@@ -99,13 +99,16 @@ export function EmailCenter() {
         
         if (gmailAccount?.sync_status) {
           setSyncStatus(gmailAccount.sync_status);
+        } else if (connected) {
+          // If connected but no status, it might be an older account or just linked
+          setSyncStatus('TOKEN_PERSISTED');
         }
 
         if (connected && (!gmailAccount.sync_status || gmailAccount.sync_status === 'TOKEN_PERSISTED')) {
           handleRefresh();
         }
       } catch (err) {
-        console.error(err);
+        console.error("Connection check error:", err);
         setGmailConnected(false);
         setIsConnected(false);
       } finally {
@@ -386,12 +389,18 @@ export function EmailCenter() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {loadingConnection || isLoading ? (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-3">
-              <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-indigo-600 animate-spin" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Neural Sync Active</span>
+          {loadingConnection ? (
+            <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-6">
+              <div className="relative">
+                <div className="w-12 h-12 border-4 border-slate-100 border-t-indigo-600 rounded-full animate-spin relative z-10" />
+                <div className="absolute inset-0 bg-indigo-50/50 rounded-full animate-ping opacity-30" />
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Initializing Neural Inbox</p>
+                <p className="text-[9px] text-slate-300 font-bold mt-1 uppercase tracking-tighter">Synchronizing Signal Infrastructure...</p>
+              </div>
             </div>
-          ) : !gmailConnected || syncStatus === 'INITIAL' ? (
+          ) : !gmailConnected || syncStatus === 'INITIAL' || syncStatus === 'DISCONNECTED' ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center mb-4 text-slate-500">
                 <ShieldCheck className="w-8 h-8" />
