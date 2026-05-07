@@ -93,18 +93,18 @@ export function EmailCenter() {
           return;
         }
 
-        const connected = !!gmailAccount?.refresh_token || !!gmailAccount?.access_token;
-        setGmailConnected(connected);
-        setIsConnected(connected);
+        const isConnected = !!gmailAccount?.connected && ['TOKEN_PERSISTED', 'SYNCING', 'READY'].includes(gmailAccount?.sync_status);
+        setGmailConnected(isConnected);
+        setIsConnected(isConnected);
         
         if (gmailAccount?.sync_status) {
           setSyncStatus(gmailAccount.sync_status);
-        } else if (connected) {
+        } else if (isConnected) {
           // If connected but no status, it might be an older account or just linked
           setSyncStatus('TOKEN_PERSISTED');
         }
 
-        if (connected && (!gmailAccount.sync_status || gmailAccount.sync_status === 'TOKEN_PERSISTED')) {
+        if (isConnected && (!gmailAccount.sync_status || gmailAccount.sync_status === 'TOKEN_PERSISTED')) {
           handleRefresh();
         }
       } catch (err) {

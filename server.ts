@@ -296,8 +296,8 @@ async function startServer() {
           gmail_email: gmailEmail,
           access_token: tokens.access_token,
           ...(hasRefreshToken ? { refresh_token: tokens.refresh_token } : {}),
-          connected: hasRefreshToken,
-          sync_status: hasRefreshToken ? "TOKEN_PERSISTED" : "ERROR",
+          connected: true,
+          sync_status: "TOKEN_PERSISTED",
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'

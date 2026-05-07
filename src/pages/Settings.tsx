@@ -110,8 +110,6 @@ export default function Settings() {
           redirect_uri: REDIRECT_URI,
           response_type: "code",
           access_type: "offline",
-          prompt: "consent",
-          include_granted_scopes: "false",
           state: user.id, // Pass userId as state to link account back
           scope: [
             "openid",
