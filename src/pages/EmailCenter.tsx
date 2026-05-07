@@ -425,18 +425,33 @@ export function EmailCenter() {
                 <div className="absolute inset-0 bg-indigo-100/50 rounded-3xl animate-ping opacity-30" />
               </div>
               <div>
-                <p className="text-sm font-bold text-slate-900">Preparing Neural Sync</p>
-                <div className="mt-4 w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden mx-auto">
-                   <motion.div 
-                    initial={{ width: "0%" }}
-                    animate={{ width: "100%" }}
-                    transition={{ duration: 10, repeat: Infinity }}
-                    className="h-full bg-indigo-600"
-                   />
-                </div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">
-                  Importing conversations & parsing resumes...
+                <p className="text-sm font-bold text-slate-900">Communication Hub Connected</p>
+                
+                <p className="text-xs font-semibold text-slate-500 leading-relaxed mt-3">
+                  Your inbox is being synchronized.<br/>
+                  Recent conversations will appear progressively.
                 </p>
+                {lastSynced && (
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-2">
+                    Last sync attempt: {lastSynced}
+                  </p>
+                )}
+                
+                <div className="mt-8 flex gap-4 justify-center">
+                  <button 
+                    onClick={() => handleRefresh(true)}
+                    disabled={isSyncing}
+                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all font-bold shadow-md shadow-indigo-600/20 disabled:opacity-50"
+                  >
+                    {isSyncing ? "Syncing..." : "Retry Sync"}
+                  </button>
+                  <button 
+                    onClick={() => console.log('Checking Sync Logs...')}
+                    className="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all font-bold"
+                  >
+                    View Sync Logs
+                  </button>
+                </div>
               </div>
             </div>
           ) : syncStatus === 'ERROR' ? (
