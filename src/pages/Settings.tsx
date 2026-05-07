@@ -97,32 +97,34 @@ export default function Settings() {
       if (!isSupabaseConfigured()) {
         throw new Error('Please configure Supabase first');
       }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Auth required");
+
+      const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      const REDIRECT_URI = `${window.location.origin}/api/google/callback`;
       
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: 'https://crm.hirenestworkforce.com/auth/callback',
+      const GOOGLE_AUTH_URL = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          redirect_uri: REDIRECT_URI,
+          response_type: "code",
+          access_type: "offline",
+          prompt: "consent",
+          state: user.id, // Pass userId as state to link account back
+          scope: [
+            "openid",
+            "email",
+            "profile",
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.send",
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://www.googleapis.com/auth/gmail.labels"
+          ].join(" "),
+        });
 
-          scopes: [
-            'openid',
-            'email',
-            'profile',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.send',
-            'https://www.googleapis.com/auth/gmail.modify',
-            'https://www.googleapis.com/auth/gmail.labels'
-          ].join(' '),
-
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent'
-          }
-        }
-      });
-
-      if (error) throw error;
-      
-      toast.success('Initiating secure neural link...');
+      toast.success('Establishing direct neural link...');
+      window.location.href = GOOGLE_AUTH_URL;
     } catch (err: any) {
       toast.error(err.message || 'Gmail connection failed');
     } finally {

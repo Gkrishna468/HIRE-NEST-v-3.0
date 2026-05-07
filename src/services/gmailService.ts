@@ -15,11 +15,39 @@ import { JobType, enqueueJob } from "./queueService";
 async function getAuthoritativeToken(userId: string) {
   const { data: gmailAccount } = await supabase
     .from('gmail_accounts')
-    .select('access_token, refresh_token')
+    .select('access_token, refresh_token, updated_at')
     .eq('user_id', userId)
     .single();
+
+  if (!gmailAccount) return null;
+
+  // Check if token is likely expired (Google tokens last 1 hour)
+  const updatedAt = new Date(gmailAccount.updated_at).getTime();
+  const now = Date.now();
+  const expiryThreshold = 50 * 60 * 1000; // 50 minutes
+
+  if (now - updatedAt > expiryThreshold && gmailAccount.refresh_token) {
+    try {
+      console.log("[Gmail Service] Access token likely expired, initiating refresh...");
+      const res = await fetch(`${window.location.origin}/api/google/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        console.log("[Gmail Service] Token refresh successful.");
+        return data.access_token;
+      } else {
+        console.warn("[Gmail Service] Token refresh endpoint returned error:", await res.text());
+      }
+    } catch (err) {
+      console.error("[Gmail Service] Neural link refresh failed:", err);
+    }
+  }
   
-  return gmailAccount?.access_token || gmailAccount?.refresh_token; 
+  return gmailAccount.access_token; 
 }
 
 export async function syncGmailInbox(force: boolean = false) {
@@ -125,7 +153,7 @@ export async function syncGmailInbox(force: boolean = false) {
       const { html, text } = extractBody(email.payload);
       const finalBodyText = text || email.snippet || "No textual content detected.";
       
-      const { data: profile } = await supabase.from('profiles').select('company_id').eq('user_id', session?.user?.id).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('company_id').eq('user_id', userId).maybeSingle();
 
       const emailPayload: any = {
         subject: subject,
@@ -140,7 +168,7 @@ export async function syncGmailInbox(force: boolean = false) {
         to_email: to,
         direction: 'inbound',
         status: 'received',
-        user_id: session?.user?.id,
+        user_id: userId,
         company_id: profile?.company_id,
         message_header_id: messageHeaderId,
         labels: email.labelIds || []
@@ -264,18 +292,18 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
   if (data.error) throw new Error(data.error.message);
 
   // Persist locally
-  const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+  const { data: profile } = await supabase.from('profiles').select('company_id').eq('user_id', userId).maybeSingle();
   
   await supabase.from('emails').insert({
     thread_id: threadId,
     message_id: data.id,
-    from_email: session?.user?.email || 'me',
+    from_email: user?.email || 'me',
     to_email: to,
     subject: subject,
     body: body,
     direction: 'outbound',
     status: 'sent',
-    user_id: session?.user?.id,
+    user_id: userId,
     company_id: profile?.company_id,
     received_at: new Date().toISOString()
   });
@@ -324,18 +352,18 @@ export async function sendNewEmail(to: string, subject: string, body: string) {
   if (data.error) throw new Error(data.error.message);
 
   // Persist locally
-  const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session?.user?.id).maybeSingle();
+  const { data: profile } = await supabase.from('profiles').select('company_id').eq('user_id', userId).maybeSingle();
   
   await supabase.from('emails').insert({
     thread_id: data.threadId,
     message_id: data.id,
-    from_email: session?.user?.email || 'me',
+    from_email: user?.email || 'me',
     to_email: to,
     subject: subject,
     body: body,
     direction: 'outbound',
     status: 'sent',
-    user_id: session?.user?.id,
+    user_id: userId,
     company_id: profile?.company_id,
     received_at: new Date().toISOString()
   });

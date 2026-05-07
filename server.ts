@@ -241,6 +241,113 @@ async function startServer() {
 
   startNestorWorker().catch(err => console.error("Worker startup failed:", err));
 
+  // 4.1 DIRECT GOOGLE OAUTH HANDLERS
+  app.get("/api/google/callback", async (req, res) => {
+    const { code, state } = req.query;
+    if (!code) return res.status(400).send("No code provided");
+
+    try {
+      const { google } = await import("googleapis");
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        `${process.env.NODE_ENV === 'production' ? 'https://crm.hirenestworkforce.com' : 'http://localhost:3000'}/api/google/callback`
+      );
+
+      const { tokens } = await oauth2Client.getToken(code as string);
+      oauth2Client.setCredentials(tokens);
+
+      // Fetch user profile to get email
+      const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+      const userInfo = await oauth2.userinfo.get();
+      const gmailEmail = userInfo.data.email;
+
+      // We need the user_id to save to gmail_accounts. 
+      // We can pass it through 'state' param or rely on the session if the user is logged in.
+      // Since it's a redirect, we might not have the session in cookies if it's a different domain.
+      // Let's check state.
+      let userId = state as string;
+      
+      if (!userId) {
+        // Fallback: try to get from current session if possible (might not work cross-domain)
+        const { data: { session } } = await supabase.auth.getSession();
+        userId = session?.user?.id || "";
+      }
+
+      if (!userId) {
+        return res.status(400).send("User ID missing from OAuth flow");
+      }
+
+      const { error: upsertError } = await supabase
+        .from("gmail_accounts")
+        .upsert({
+          user_id: userId,
+          gmail_email: gmailEmail,
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token, // Only sent on first consent or if prompt=consent
+          connected: true,
+          sync_status: tokens.refresh_token ? "READY" : "ERROR",
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (upsertError) {
+        console.error("GMAIL_ACCOUNTS UPSERT ERROR:", upsertError);
+        return res.status(500).send("Failed to save tokens");
+      }
+
+      // Redirect back to frontend
+      res.redirect("/email");
+    } catch (err) {
+      console.error("Google OAuth Callback Error:", err);
+      res.status(500).send("Authentication failed");
+    }
+  });
+
+  app.post("/api/google/refresh", async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "userId required" });
+
+    try {
+      const { data: account } = await supabase
+        .from('gmail_accounts')
+        .select('refresh_token')
+        .eq('user_id', userId)
+        .single();
+
+      if (!account?.refresh_token) {
+        return res.status(400).json({ error: "No refresh token found" });
+      }
+
+      const { google } = await import("googleapis");
+      const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET
+      );
+
+      oauth2Client.setCredentials({
+        refresh_token: account.refresh_token
+      });
+
+      const { tokens } = await oauth2Client.refreshAccessToken();
+      
+      // Update access token in DB
+      await supabase
+        .from('gmail_accounts')
+        .update({
+          access_token: tokens.access_token,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      res.json({ access_token: tokens.access_token });
+    } catch (err) {
+      console.error("Token Refresh Error:", err);
+      res.status(500).json({ error: "Refresh failed" });
+    }
+  });
+
   // 5. HEALTH CHECK & MAINTENANCE
   app.get("/api/health", (req, res) => {
     res.json({ 
