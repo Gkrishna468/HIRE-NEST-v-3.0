@@ -102,7 +102,7 @@ export default function Settings() {
       if (!user) throw new Error("Auth required");
 
       const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      const REDIRECT_URI = `${window.location.origin}/api/google/callback`;
+      const REDIRECT_URI = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'https://crm.hirenestworkforce.com/api/google/callback';
       
       const GOOGLE_AUTH_URL = `https://accounts.google.com/o/oauth2/v2/auth?` +
         new URLSearchParams({

@@ -247,11 +247,13 @@ async function startServer() {
     if (!code) return res.status(400).send("No code provided");
 
     try {
+      const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'https://crm.hirenestworkforce.com/api/google/callback';
+      
       const { google } = await import("googleapis");
       const oauth2Client = new google.auth.OAuth2(
         process.env.GOOGLE_CLIENT_ID,
         process.env.GOOGLE_CLIENT_SECRET,
-        `${process.env.NODE_ENV === 'production' ? 'https://crm.hirenestworkforce.com' : 'http://localhost:3000'}/api/google/callback`
+        redirectUri
       );
 
       const { tokens } = await oauth2Client.getToken(code as string);
