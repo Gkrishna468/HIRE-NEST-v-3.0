@@ -31,7 +31,61 @@ interface Email {
   message_header_id?: string;
 }
 
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Email Node UI Crash:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex-1 bg-slate-50 flex flex-col items-center justify-center p-8">
+          <div className="w-20 h-20 bg-red-100 rounded-[2rem] flex items-center justify-center mb-8 shadow-xl shadow-red-500/10 mb-6">
+            <AlertCircle className="w-10 h-10 text-red-600" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Communication Node Encountered a Rendering Fault</h2>
+          <p className="text-sm text-slate-500 mt-3 max-w-md text-center leading-relaxed font-medium">
+            The synchronization engine is still running in the background. Please reload the node or view diagnostics.
+          </p>
+          <div className="flex bg-slate-100 rounded-xl p-4 mt-6 max-w-2xl w-full mx-auto overflow-auto text-xs text-red-600 font-mono text-left opacity-80 border border-slate-200">
+            {this.state.error?.toString()}
+          </div>
+          <div className="mt-8 flex gap-4">
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all font-bold shadow-xl shadow-slate-900/20"
+            >
+              Reload Node
+            </button>
+            <button 
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-8 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all font-bold shadow-sm"
+            >
+              Retry UI
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function EmailCenter() {
+  return (
+    <ErrorBoundary>
+      <EmailCenterComponent />
+    </ErrorBoundary>
+  );
+}
+
+function EmailCenterComponent() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,6 +102,7 @@ export function EmailCenter() {
   const [gmailConnected, setGmailConnected] = useState(false);
   const [loadingConnection, setLoadingConnection] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
+  const isSyncing = syncStatus === 'SYNCING' || syncStatus === 'TOKEN_PERSISTED';
 
   useEffect(() => {
     if (selectedThreadId) {
