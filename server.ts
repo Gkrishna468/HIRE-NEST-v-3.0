@@ -297,7 +297,7 @@ async function startServer() {
           access_token: tokens.access_token,
           ...(hasRefreshToken ? { refresh_token: tokens.refresh_token } : {}),
           connected: hasRefreshToken,
-          sync_status: hasRefreshToken ? "READY" : "ERROR",
+          sync_status: hasRefreshToken ? "TOKEN_PERSISTED" : "ERROR",
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'

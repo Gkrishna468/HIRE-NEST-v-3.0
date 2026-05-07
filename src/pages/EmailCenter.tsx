@@ -468,6 +468,12 @@ export function EmailCenter() {
               <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-[200px]">
                 Try clearing your search or force a refresh to pull new signals.
               </p>
+              <button 
+                onClick={() => handleRefresh(true)}
+                className="mt-6 px-6 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all font-bold"
+              >
+                Force Neural Sync
+              </button>
             </div>
           ) : (
             filteredThreads.map((thread) => (
@@ -744,15 +750,17 @@ export function EmailCenter() {
             <div>
               <p className="text-lg font-black text-slate-900 tracking-tight">Signal Selection Required</p>
               <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                Connect your communications hub to trigger the neural matching engine and autonomous recruiter agents.
+                Select a thread from your feed to view details, trigger the neural matching engine, and launch autonomous recruiter agents.
               </p>
             </div>
-            <button 
-              onClick={() => handleRefresh()}
-              className="px-8 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
-            >
-              Force Neural Sync
-            </button>
+            {emails.length === 0 && syncStatus === 'READY' && (
+              <button 
+                onClick={() => handleRefresh(true)}
+                className="px-8 py-3 bg-white border border-slate-200 text-slate-900 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm"
+              >
+                Force Neural Sync
+              </button>
+            )}
           </div>
         )}
       </div>
