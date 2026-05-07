@@ -47,21 +47,7 @@ export default function Login() {
         provider: 'google',
         options: {
           redirectTo: 'https://crm.hirenestworkforce.com/auth/callback',
-
-          scopes: [
-            'openid',
-            'email',
-            'profile',
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/gmail.send',
-            'https://www.googleapis.com/auth/gmail.modify',
-            'https://www.googleapis.com/auth/gmail.labels'
-          ].join(' '),
-
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent'
-          }
+          scopes: 'openid email profile'
         }
       });
       if (error) throw error;

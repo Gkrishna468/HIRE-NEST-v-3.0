@@ -400,7 +400,7 @@ export function EmailCenter() {
                 <p className="text-[9px] text-slate-300 font-bold mt-1 uppercase tracking-tighter">Synchronizing Signal Infrastructure...</p>
               </div>
             </div>
-          ) : !gmailConnected || syncStatus === 'INITIAL' || syncStatus === 'DISCONNECTED' ? (
+          ) : !gmailConnected || syncStatus === 'INITIAL' || syncStatus === 'DISCONNECTED' || syncStatus === 'ERROR' ? (
             <div className="flex flex-col items-center justify-center p-12 text-center h-full">
               <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center mb-4 text-slate-500">
                 <ShieldCheck className="w-8 h-8" />

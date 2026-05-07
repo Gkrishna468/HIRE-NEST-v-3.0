@@ -259,6 +259,11 @@ async function startServer() {
       const { tokens } = await oauth2Client.getToken(code as string);
       oauth2Client.setCredentials(tokens);
 
+      console.log("GOOGLE OAUTH TOKENS RECEIVED:", JSON.stringify({
+        ...tokens,
+        access_token: tokens.access_token ? '[REDACTED]' : null,
+      }, null, 2));
+
       // Fetch user profile to get email
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
       const userInfo = await oauth2.userinfo.get();
@@ -280,15 +285,19 @@ async function startServer() {
         return res.status(400).send("User ID missing from OAuth flow");
       }
 
+      const hasRefreshToken = !!tokens.refresh_token;
+
+      // Ensure we only update/insert with correct status and connected state
+      // according to the requirement: if (!tokens.refresh_token) { sync_status = 'ERROR', connected = false }
       const { error: upsertError } = await supabase
         .from("gmail_accounts")
         .upsert({
           user_id: userId,
           gmail_email: gmailEmail,
           access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token, // Only sent on first consent or if prompt=consent
-          connected: true,
-          sync_status: tokens.refresh_token ? "READY" : "ERROR",
+          ...(hasRefreshToken ? { refresh_token: tokens.refresh_token } : {}),
+          connected: hasRefreshToken,
+          sync_status: hasRefreshToken ? "READY" : "ERROR",
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
