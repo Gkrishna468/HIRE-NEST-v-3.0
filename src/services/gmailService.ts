@@ -12,23 +12,23 @@ import { JobType, enqueueJob } from "./queueService";
  * Connects to Google Graph API, fetches messages, and stores in CRM.
  */
 
+async function getAuthoritativeToken(userId: string) {
+  const { data: gmailAccount } = await supabase
+    .from('gmail_accounts')
+    .select('access_token, refresh_token')
+    .eq('user_id', userId)
+    .single();
+  
+  return gmailAccount?.access_token || gmailAccount?.refresh_token; 
+}
+
 export async function syncGmailInbox(force: boolean = false) {
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = session?.provider_token;
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
-  if (!token) {
-    const { data: gmailAccount } = await supabase
-      .from('gmail_accounts')
-      .select('access_token, refresh_token')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
-  }
+  const token = await getAuthoritativeToken(userId);
 
   if (!token) {
     throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
@@ -36,7 +36,7 @@ export async function syncGmailInbox(force: boolean = false) {
 
   // 1. Fetch recent messages
   const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${force ? 100 : 50}`;
-  console.log(`[Gmail Sync] Initiating fetch. Identity: ${session?.user?.id}. Force Mode: ${force}`);
+  console.log(`[Gmail Sync] Initiating fetch. Identity: ${userId}. Force Mode: ${force}`);
   
   const listRes = await fetch(listUrl, {
     headers: { Authorization: `Bearer ${token}` }
@@ -222,22 +222,12 @@ async function triggerAIEnrichment(messageId: string, email: any, subject: strin
  * SEND EMAIL REPLY via Gmail API
  */
 export async function sendEmailReply(threadId: string, to: string, subject: string, body: string, inReplyToHeaderId?: string) {
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = session?.provider_token;
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
-  if (!token) {
-    const { data: gmailAccount } = await supabase
-      .from('gmail_accounts')
-      .select('access_token, refresh_token')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
-  }
+  const token = await getAuthoritativeToken(userId);
 
   if (!token) throw new Error("GMAIL_NOT_CONNECTED");
 
@@ -297,22 +287,12 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
  * SEND NEW EMAIL via Gmail API
  */
 export async function sendNewEmail(to: string, subject: string, body: string) {
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = session?.provider_token;
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
-  if (!token) {
-    const { data: gmailAccount } = await supabase
-      .from('gmail_accounts')
-      .select('access_token, refresh_token')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
-  }
+  const token = await getAuthoritativeToken(userId);
 
   if (!token) throw new Error("GMAIL_NOT_CONNECTED");
 
@@ -364,22 +344,12 @@ export async function sendNewEmail(to: string, subject: string, body: string) {
 }
 
 export async function syncGmailResumes() {
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = session?.provider_token;
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
-  if (!token) {
-    const { data: gmailAccount } = await supabase
-      .from('gmail_accounts')
-      .select('access_token, refresh_token')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
-  }
+  const token = await getAuthoritativeToken(userId);
 
   if (!token) {
     throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
@@ -452,22 +422,12 @@ export async function syncGmailResumes() {
 }
 
 export async function setupGmailWatch() {
-  const { data: { session } } = await supabase.auth.getSession();
-  let token = session?.provider_token;
-  const userId = session?.user?.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id;
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  // Robust Token Recovery (check gmail_accounts for authoritative tokens)
-  if (!token) {
-    const { data: gmailAccount } = await supabase
-      .from('gmail_accounts')
-      .select('access_token, refresh_token')
-      .eq('user_id', userId)
-      .maybeSingle();
-    
-    token = gmailAccount?.access_token || gmailAccount?.refresh_token; 
-  }
+  const token = await getAuthoritativeToken(userId);
 
   if (!token) {
     throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
@@ -497,8 +457,7 @@ export async function setupGmailWatch() {
   }
 
   // Update profile with historyId
-  const { data: user } = await supabase.auth.getUser();
-  if (user.user) {
+  if (user) {
     await supabase
       .from('profiles')
       .update({ 
@@ -508,7 +467,7 @@ export async function setupGmailWatch() {
           watch_expires: data.expiration
         } 
       })
-      .eq('user_id', user.user.id);
+      .eq('user_id', user.id);
   }
 
   return data;

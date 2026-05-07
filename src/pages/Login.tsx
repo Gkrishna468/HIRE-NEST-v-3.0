@@ -46,19 +46,21 @@ export default function Login() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: 'https://crm.hirenestworkforce.com/auth/callback',
+
           scopes: [
             'openid',
             'email',
             'profile',
             'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.send',
             'https://www.googleapis.com/auth/gmail.modify',
-            'https://www.googleapis.com/auth/gmail.labels',
-            'https://www.googleapis.com/auth/gmail.send'
+            'https://www.googleapis.com/auth/gmail.labels'
           ].join(' '),
+
           queryParams: {
             access_type: 'offline',
-            prompt: 'consent',
+            prompt: 'consent'
           }
         }
       });

@@ -101,13 +101,23 @@ export default function Settings() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
-          scopes: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels',
+          redirectTo: 'https://crm.hirenestworkforce.com/auth/callback',
+
+          scopes: [
+            'openid',
+            'email',
+            'profile',
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/gmail.send',
+            'https://www.googleapis.com/auth/gmail.modify',
+            'https://www.googleapis.com/auth/gmail.labels'
+          ].join(' '),
+
           queryParams: {
             access_type: 'offline',
             prompt: 'consent'
           }
-        },
+        }
       });
 
       if (error) throw error;
@@ -125,18 +135,11 @@ export default function Settings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Authoritative cleanup: remove the credentials from gmail_accounts
         await supabase.from('gmail_accounts').delete().eq('user_id', user.id);
-        
-        // Optional: Also clear legacy profile fields
-        await supabase.from('profiles').update({
-          gmail_connected: false,
-          provider_token: null,
-          provider_refresh_token: null,
-          updated_at: new Date().toISOString()
-        }).eq('user_id', user.id);
       }
 
-      // Clear token by signing out
+      // Clear session by signing out to ensure fresh tokens on next login
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
