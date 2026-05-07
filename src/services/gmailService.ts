@@ -56,40 +56,60 @@ export async function syncGmailInbox(force: boolean = false) {
 
   if (!userId) throw new Error("AUTH_REQUIRED: Identity not detected.");
 
-  const token = await getAuthoritativeToken(userId);
+  try {
+    console.log("========== GMAIL SYNC START ==========");
+    console.log("USER:", userId);
 
-  if (!token) {
-    throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
-  }
+    const { data: accountInfo } = await supabase
+      .from('gmail_accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
 
-  // 1. Fetch recent messages
-  const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${force ? 100 : 50}`;
-  console.log(`[Gmail Sync] Initiating fetch. Identity: ${userId}. Force Mode: ${force}`);
-  
-  const listRes = await fetch(listUrl, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  
-  if (!listRes.ok) {
-    const errorData = await listRes.json();
-    console.error("[Gmail Sync] API Request Failed:", errorData);
-    throw new Error(`Gmail API Error: ${errorData.error?.message || listRes.statusText}`);
-  }
+    console.log("ACCOUNT:", accountInfo);
+    console.log("ACCESS TOKEN EXISTS:", !!accountInfo?.access_token);
+    console.log("REFRESH TOKEN EXISTS:", !!accountInfo?.refresh_token);
 
-  const listData = await listRes.json();
-  console.log(`[Gmail Sync] API Response received. Found ${listData.messages?.length || 0} messages.`);
+    console.log("INITIALIZING GMAIL CLIENT");
+    const token = await getAuthoritativeToken(userId);
 
-  if (!listData.messages || listData.messages.length === 0) {
-    console.log("[Gmail Sync] No signals detected in the stream.");
-    return { count: 0, message: "Inbox is optimized and quiet." };
-  }
+    if (!token) {
+      throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
+    }
 
-  console.log(`[Gmail Sync] Analyzing ${listData.messages.length} potential signals...`);
+    // 1. Fetch recent messages
+    console.log("FETCHING MESSAGE LIST");
+    const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${force ? 100 : 50}`;
+    console.log(`[Gmail Sync] Initiating fetch. Identity: ${userId}. Force Mode: ${force}`);
+    
+    const listRes = await fetch(listUrl, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (!listRes.ok) {
+      const errorData = await listRes.json();
+      console.error("[Gmail Sync] API Request Failed:", errorData);
+      throw new Error(`Gmail API Error: ${errorData.error?.message || listRes.statusText}`);
+    }
 
-  let syncCount = 0;
-  let errorCount = 0;
+    const listData = await listRes.json();
+    console.log("MESSAGES RECEIVED:", listData.messages?.length || 0);
+    console.log(`[Gmail Sync] API Response received. Found ${listData.messages?.length || 0} messages.`);
 
-  for (const msg of listData.messages) {
+    if (!listData.messages || listData.messages.length === 0) {
+      console.log("[Gmail Sync] No signals detected in the stream.");
+      console.log("SETTING STATUS READY");
+      await supabase.from("gmail_accounts").update({ sync_status: "READY" }).eq("user_id", userId);
+      return { count: 0, message: "Inbox is optimized and quiet." };
+    }
+
+    console.log(`[Gmail Sync] Analyzing ${listData.messages.length} potential signals...`);
+
+    let syncCount = 0;
+    let errorCount = 0;
+
+    console.log("INSERTING EMAILS");
+    for (const msg of listData.messages) {
     try {
       // 1. Check cache first to avoid re-work (unless forced)
       if (!force) {
@@ -200,12 +220,30 @@ export async function syncGmailInbox(force: boolean = false) {
     }
   }
 
-  console.log(`[Gmail Sync] Finished. Synced: ${syncCount}. Errors: ${errorCount}.`);
-  return { 
-    count: syncCount, 
-    errors: errorCount,
-    message: syncCount > 0 ? `Mirrored ${syncCount} signals from neural network.` : "No new messages signals detected."
-  };
+    console.log("EMAIL INSERT COMPLETE");
+    console.log(`[Gmail Sync] Finished. Synced: ${syncCount}. Errors: ${errorCount}.`);
+    
+    console.log("SETTING STATUS READY");
+    await supabase.from("gmail_accounts").update({ sync_status: "READY" }).eq("user_id", userId);
+
+    return { 
+      count: syncCount, 
+      errors: errorCount,
+      message: syncCount > 0 ? `Mirrored ${syncCount} signals from neural network.` : "No new messages signals detected."
+    };
+  } catch (err: any) {
+    console.error("SYNC FAILURE:", err);
+    await supabase
+      .from("gmail_accounts")
+      .update({
+        sync_status: "ERROR",
+        last_error: err?.message || String(err),
+        updated_at: new Date().toISOString()
+      })
+      .eq("user_id", userId);
+    
+    throw err;
+  }
 }
 
 async function triggerAIEnrichment(messageId: string, email: any, subject: string, from: string) {
