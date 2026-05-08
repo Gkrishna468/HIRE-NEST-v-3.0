@@ -311,7 +311,7 @@ async function startServer() {
       }
 
       // Redirect back to frontend
-      res.redirect("/email");
+      res.redirect("/#/email");
     } catch (err) {
       console.error("Google OAuth Callback Error:", err);
       res.status(500).send("Authentication failed");
@@ -343,18 +343,18 @@ async function startServer() {
         refresh_token: account.refresh_token
       });
 
-      const { tokens } = await oauth2Client.refreshAccessToken();
+      const { credentials } = await oauth2Client.refreshAccessToken();
       
       // Update access token in DB
       await supabase
         .from('gmail_accounts')
         .update({
-          access_token: tokens.access_token,
+          access_token: credentials.access_token,
           updated_at: new Date().toISOString()
         })
         .eq('user_id', userId);
 
-      res.json({ access_token: tokens.access_token });
+      res.json({ access_token: credentials.access_token });
     } catch (err) {
       console.error("Token Refresh Error:", err);
       res.status(500).json({ error: "Refresh failed" });

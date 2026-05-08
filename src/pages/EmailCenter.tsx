@@ -99,6 +99,7 @@ function EmailCenterComponent() {
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string>('INITIAL');
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [gmailConnected, setGmailConnected] = useState(false);
   const [loadingConnection, setLoadingConnection] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
@@ -247,6 +248,7 @@ function EmailCenterComponent() {
       await fetchEmails();
     } catch (err: any) {
       setSyncStatus('ERROR');
+      setSyncError(err.message || 'Signal sync failed');
       toast.error(err.message || 'Signal sync failed');
     } finally {
       setIsRefreshing(false);
@@ -520,7 +522,7 @@ function EmailCenterComponent() {
               </p>
               <div className="mt-6 p-4 bg-slate-50 rounded-2xl text-left border border-slate-100 w-full mb-4">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Diagnostics</p>
-                <p className="text-[10px] text-red-500 font-bold">Refresh token verification failed or Gmail API quota reached.</p>
+                <p className="text-[10px] text-red-500 font-bold">{syncError || 'Refresh token verification failed or Gmail API quota reached.'}</p>
               </div>
               <button 
                 onClick={() => handleRefresh(true)}
