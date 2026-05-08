@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { runUnifiedBrain } from "./src/services/brainService";
@@ -24,7 +24,7 @@ async function startServer() {
   if (!apiKey) {
     console.warn("⚠️ GEMINI_API_KEY is not set in the environment. AI features will fail.");
   }
-  const genAI = new GoogleGenerativeAI(apiKey || "");
+  const ai = new GoogleGenAI({ apiKey: apiKey || "" });
 
   // Simple Rate Limiting for AI Endpoints
   const requestCounts = new Map<string, { count: number; lastReset: number }>();
@@ -57,10 +57,11 @@ async function startServer() {
 
       const fullPrompt = `${context ? `Context: ${JSON.stringify(context)}\n\n` : ""}User: ${prompt}`;
       
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-      const result = await model.generateContent(fullPrompt);
-      const response = await result.response;
-      const text = response.text();
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-pro",
+        contents: fullPrompt
+      });
+      const text = response.text;
 
       res.json({ text });
     } catch (error) {
@@ -76,15 +77,16 @@ async function startServer() {
       if (!prompt) return res.status(400).json({ error: "Prompt required" });
       
       const modelName = config?.model || "gemini-1.5-pro";
-      const model = genAI.getGenerativeModel({ model: modelName });
       
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: prompt
+      });
+      const text = response.text;
       
       // Ensure we return JSON if it looks like JSON, otherwise return the text
       try {
-        const cleanJson = text.replace(/```json|```/g, "").trim();
+        const cleanJson = text?.replace(/```json|```/g, "").trim() || "";
         const parsed = JSON.parse(cleanJson);
         res.json(parsed);
       } catch {
