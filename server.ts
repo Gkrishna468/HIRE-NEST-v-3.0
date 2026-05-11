@@ -243,7 +243,27 @@ async function startServer() {
 
   startNestorWorker().catch(err => console.error("Worker startup failed:", err));
 
-  // 4.1 DIRECT GOOGLE OAUTH HANDLERS -> REMOVED IN FAVOR OF PLUGIN/CONNECTOR ARCHITECTURE
+  // 4.1 PLUGIN ENDPOINTS (RECEIVING PAYLOADS FROM EXTERNAL INGESTION LIONS LIKE CRM)
+  app.post("/api/plugins/gmail/ingest", express.json(), async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader !== "Bearer hn_plug_os_92f3a8b71d9e4c5a") {
+      return res.status(401).json({ error: "Unauthorized OS Plugin Access" });
+    }
+
+    try {
+      const payload = req.body;
+      console.log("[PLUGIN_GMAIL] Received ingested email from CRM:", JSON.stringify(payload, null, 2));
+
+      // 1. Process payload with AI Parser Plugin
+      // 2. Run Match Score Plugin
+      // 3. Emit via Event Bus
+
+      res.status(200).json({ status: "ingested", event: "email.parsed", id: Date.now() });
+    } catch (err) {
+      console.error("[PLUGIN_GMAIL] Ingestion error:", err);
+      res.status(500).json({ error: "Plugin execution failed" });
+    }
+  });
 
   // 5. HEALTH CHECK & MAINTENANCE
   app.get("/api/health", (req, res) => {

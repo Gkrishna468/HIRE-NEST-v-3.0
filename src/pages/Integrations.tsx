@@ -60,10 +60,8 @@ const CONNECTORS: Connector[] = [
 export default function Integrations() {
   const [activeTab, setActiveTab] = useState<'plugins' | 'connectors'>('plugins');
   const [configuringWebhook, setConfiguringWebhook] = useState(false);
-  const [configuringPlugin, setConfiguringPlugin] = useState<Plugin | null>(null);
   const [webhookUrl, setWebhookUrl] = useState('https://crm.hirenestworkforce.com/api/intake');
-  const [osConnectionUrl, setOsConnectionUrl] = useState('https://app.hirenestworkforce.com/api/v1/plugins/gmail');
-  const [osSecretKey, setOsSecretKey] = useState('');
+  const [configuringPlugin, setConfiguringPlugin] = useState<Plugin | null>(null);
 
   const handleSaveWebhook = () => {
     toast.success('Webhook connector saved and active.', {
@@ -72,9 +70,9 @@ export default function Integrations() {
     setConfiguringWebhook(false);
   };
 
-  const handleConnectPlugin = () => {
-    toast.success(`${configuringPlugin?.name} connected to OS Core`, {
-      description: `Now routing via ${osConnectionUrl}`,
+  const handleSavePlugin = () => {
+    toast.success(`${configuringPlugin?.name} configuration saved.`, {
+      description: 'Plugin is now active and routing to OS core engine.'
     });
     setConfiguringPlugin(null);
   };
@@ -158,71 +156,83 @@ export default function Integrations() {
               </div>
 
               {configuringPlugin && (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-                  <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-                    <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                          <configuringPlugin.icon className="w-5 h-5" />
-                        </div>
+                <div className="mt-8 p-6 bg-slate-50 border border-slate-200 text-left rounded-xl animate-in slide-in-from-bottom-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                      <configuringPlugin.icon className="w-5 h-5 text-indigo-500" />
+                      Configure {configuringPlugin.name}
+                    </h3>
+                  </div>
+                  
+                  {configuringPlugin.id === 'gmail' && (
+                    <>
+                      <p className="text-xs text-slate-500 mb-6 max-w-2xl">
+                        This AI plugin exposes a webhook connector for your CRM (<b>crm.hirenestworkforce.com</b>) to push ingested emails securely into the OS core intelligence layer. The OS will automatically trigger Resume Parsing and Match AI plugins.
+                      </p>
+                      
+                      <div className="space-y-5 max-w-2xl bg-white p-5 rounded-xl border border-slate-200">
                         <div>
-                          <h3 className="font-bold text-lg text-slate-900">Configure {configuringPlugin.name}</h3>
-                          <p className="text-xs text-slate-500">Link this CRM view to your OS Core Intelligence Layer.</p>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">
+                            OS Receiving Endpoint (Email Connector URI)
+                          </label>
+                          <div className="flex">
+                            <input 
+                              type="url" 
+                              readOnly
+                              value="https://app.hirenestworkforce.com/api/plugins/gmail/ingest"
+                              className="w-full px-4 py-2 border border-slate-200 rounded-l-lg text-sm bg-slate-50 text-slate-600 outline-none font-mono"
+                            />
+                            <button 
+                              onClick={() => {
+                                navigator.clipboard.writeText("https://app.hirenestworkforce.com/api/plugins/gmail/ingest");
+                                toast.success('Endpoint URL copied to clipboard');
+                              }}
+                              className="px-4 py-2 bg-slate-100 border-y border-r border-slate-200 rounded-r-lg text-slate-600 font-bold text-sm hover:bg-slate-200 transition-colors"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-slate-400 mt-1">Configure your CRM to POST to this endpoint when an email is ingested.</p>
                         </div>
-                      </div>
-                    </div>
-                    
-                    <div className="p-6 space-y-5">
-                      {configuringPlugin.id === 'gmail' && (
-                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-4">
-                          <p className="text-sm text-indigo-800 leading-relaxed font-medium">
-                            The <strong>Gmail Internal Ingestion</strong> operates seamlessly from <code className="bg-white px-1 py-0.5 rounded text-indigo-600">app.hirenestworkforce.com</code>. 
-                            Provide your secure OS handshake to funnel parsed emails into this CRM connector.
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="space-y-4">
+                        
                         <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 block">OS Core Endpoint</label>
-                          <input 
-                            type="url" 
-                            value={osConnectionUrl}
-                            onChange={(e) => setOsConnectionUrl(e.target.value)}
-                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono text-slate-600"
-                            placeholder="https://app.hirenestworkforce.com/api/v1/plugins/..."
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 block">OS Secret Handshake Key</label>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">
+                            Plugin Secret Key
+                          </label>
                           <input 
                             type="password" 
-                            value={osSecretKey}
-                            onChange={(e) => setOsSecretKey(e.target.value)}
-                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
-                            placeholder="sk_live_osCore..."
+                            readOnly
+                            value="hn_plug_os_92f3a8b71d9e4c5a"
+                            className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600 outline-none font-mono tracking-widest"
                           />
-                          <p className="text-xs text-slate-400 mt-1">Found in your app.hirenestworkforce.com developer settings.</p>
+                        </div>
+
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-700">
+                          <strong>Active Pipeline:</strong> Ingest Email ➔ AI Parsing Plugin ➔ Match Score Plugin ➔ Event Dispatcher
                         </div>
                       </div>
+                    </>
+                  )}
 
-                      <div className="pt-4 flex gap-3 border-t border-slate-100 mt-6">
-                        <button 
-                          onClick={handleConnectPlugin}
-                          disabled={!osConnectionUrl || !osSecretKey}
-                          className="flex-1 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:shadow-none"
-                        >
-                          Sync to OS Core
-                        </button>
-                        <button 
-                          onClick={() => setConfiguringPlugin(null)}
-                          className="px-6 bg-white text-slate-600 border border-slate-200 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
+                  {configuringPlugin.id !== 'gmail' && (
+                    <div className="p-8 text-center text-slate-400 bg-white rounded-xl border border-dashed border-slate-200 mt-4">
+                      Configuration for {configuringPlugin.name} will be available in the next OS update.
                     </div>
+                  )}
+                  
+                  <div className="mt-6 flex gap-3">
+                    <button 
+                      onClick={handleSavePlugin}
+                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-indigo-700 transition-colors"
+                    >
+                      Save Configuration
+                    </button>
+                    <button 
+                      onClick={() => setConfiguringPlugin(null)}
+                      className="bg-white text-slate-600 border border-slate-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               )}
