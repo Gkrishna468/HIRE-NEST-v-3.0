@@ -60,13 +60,23 @@ const CONNECTORS: Connector[] = [
 export default function Integrations() {
   const [activeTab, setActiveTab] = useState<'plugins' | 'connectors'>('plugins');
   const [configuringWebhook, setConfiguringWebhook] = useState(false);
+  const [configuringPlugin, setConfiguringPlugin] = useState<Plugin | null>(null);
   const [webhookUrl, setWebhookUrl] = useState('https://crm.hirenestworkforce.com/api/intake');
+  const [osConnectionUrl, setOsConnectionUrl] = useState('https://app.hirenestworkforce.com/api/v1/plugins/gmail');
+  const [osSecretKey, setOsSecretKey] = useState('');
 
   const handleSaveWebhook = () => {
     toast.success('Webhook connector saved and active.', {
       description: 'Event router will now emit to ' + webhookUrl
     });
     setConfiguringWebhook(false);
+  };
+
+  const handleConnectPlugin = () => {
+    toast.success(`${configuringPlugin?.name} connected to OS Core`, {
+      description: `Now routing via ${osConnectionUrl}`,
+    });
+    setConfiguringPlugin(null);
   };
 
   return (
@@ -136,13 +146,86 @@ export default function Integrations() {
                     <h3 className="font-bold text-slate-900 mb-1">{plugin.name}</h3>
                     <p className="text-xs text-slate-500 leading-relaxed min-h-[40px]">{plugin.description}</p>
                     <div className="mt-4 pt-4 border-t border-slate-100">
-                      <button className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                      <button 
+                        onClick={() => setConfiguringPlugin(plugin)}
+                        className="text-sm font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                      >
                         <Settings className="w-4 h-4" /> Configure Plugin
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {configuringPlugin && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+                  <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                          <configuringPlugin.icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg text-slate-900">Configure {configuringPlugin.name}</h3>
+                          <p className="text-xs text-slate-500">Link this CRM view to your OS Core Intelligence Layer.</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-6 space-y-5">
+                      {configuringPlugin.id === 'gmail' && (
+                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-4">
+                          <p className="text-sm text-indigo-800 leading-relaxed font-medium">
+                            The <strong>Gmail Internal Ingestion</strong> operates seamlessly from <code className="bg-white px-1 py-0.5 rounded text-indigo-600">app.hirenestworkforce.com</code>. 
+                            Provide your secure OS handshake to funnel parsed emails into this CRM connector.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 block">OS Core Endpoint</label>
+                          <input 
+                            type="url" 
+                            value={osConnectionUrl}
+                            onChange={(e) => setOsConnectionUrl(e.target.value)}
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono text-slate-600"
+                            placeholder="https://app.hirenestworkforce.com/api/v1/plugins/..."
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 block">OS Secret Handshake Key</label>
+                          <input 
+                            type="password" 
+                            value={osSecretKey}
+                            onChange={(e) => setOsSecretKey(e.target.value)}
+                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none font-mono"
+                            placeholder="sk_live_osCore..."
+                          />
+                          <p className="text-xs text-slate-400 mt-1">Found in your app.hirenestworkforce.com developer settings.</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 flex gap-3 border-t border-slate-100 mt-6">
+                        <button 
+                          onClick={handleConnectPlugin}
+                          disabled={!osConnectionUrl || !osSecretKey}
+                          className="flex-1 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:shadow-none"
+                        >
+                          Sync to OS Core
+                        </button>
+                        <button 
+                          onClick={() => setConfiguringPlugin(null)}
+                          className="px-6 bg-white text-slate-600 border border-slate-200 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
