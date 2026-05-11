@@ -6,6 +6,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
+  Puzzle,
   LayoutDashboard, 
   Briefcase, 
   Users, 
@@ -61,7 +62,6 @@ const menuGroups = [
   {
     title: "Communication",
     items: [
-      { icon: Mail, label: 'Email Node', path: '/email', roles: ['recruiter'] },
       { icon: MessageSquare, label: 'WhatsApp Node', path: '/whatsapp', roles: ['recruiter'] },
     ]
   },
@@ -79,6 +79,7 @@ const menuGroups = [
     items: [
       { icon: ShieldCheck, label: 'Command Center', path: '/exec-suite', roles: [] },
       { icon: History, label: 'Activity Logs', path: '/activity', roles: [] },
+      { icon: Puzzle, label: 'Plugins & Connectors', path: '/integrations', roles: 'all' },
       { icon: Settings, label: 'OS Settings', path: '/settings', roles: 'all' },
     ]
   }

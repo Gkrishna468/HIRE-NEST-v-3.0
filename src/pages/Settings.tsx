@@ -28,52 +28,12 @@ export default function Settings() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('supabase');
   const [loading, setLoading] = useState(false);
-  const [gmailConnected, setGmailConnected] = useState(false);
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
 
   const [supabaseConfig, setSupabaseConfig] = useState({
     url: (typeof localStorage !== 'undefined' ? localStorage.getItem('hirenest_supabase_url') : '') || '',
     anonKey: (typeof localStorage !== 'undefined' ? localStorage.getItem('hirenest_supabase_anon_key') : '') || '',
   });
-
-  const [gmailConfig, setGmailConfig] = useState({
-    clientId: (typeof localStorage !== 'undefined' ? localStorage.getItem('hirenest_gmail_client_id') : '') || '',
-    clientSecret: '••••••••••••••••',
-    redirectUri: typeof window !== 'undefined' ? window.location.origin + '/auth/callback' : '',
-    webhookUrl: 'https://api.hirenest.com/v1/webhooks/gmail'
-  });
-
-  useEffect(() => {
-    async function checkGmail() {
-      if (isSupabaseConfigured()) {
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-
-          if (!user) {
-            setGmailConnected(false);
-            return;
-          }
-
-          const { data: gmailAccount } = await supabase
-            .from("gmail_accounts")
-            .select(`
-              connected,
-              access_token,
-              refresh_token
-            `)
-            .eq("user_id", user.id)
-            .maybeSingle();
-
-          const connected = !!gmailAccount?.refresh_token || !!gmailAccount?.access_token;
-          setGmailConnected(connected);
-        } catch (err) {
-          console.error(err);
-          setGmailConnected(false);
-        }
-      }
-    }
-    checkGmail();
-  }, []);
 
   const saveSupabase = async () => {
     setLoading(true);
@@ -91,70 +51,6 @@ export default function Settings() {
     }
   };
 
-  const connectGmail = async () => {
-    setLoading(true);
-    try {
-      if (!isSupabaseConfigured()) {
-        throw new Error('Please configure Supabase first');
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Auth required");
-
-      const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-      const REDIRECT_URI = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'https://crm.hirenestworkforce.com/api/google/callback';
-      
-      const GOOGLE_AUTH_URL = `https://accounts.google.com/o/oauth2/v2/auth?` +
-        new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID,
-          redirect_uri: REDIRECT_URI,
-          response_type: "code",
-          access_type: "offline",
-          prompt: "consent",
-          state: user.id, // Pass userId as state to link account back
-          scope: [
-            "openid",
-            "email",
-            "profile",
-            "https://www.googleapis.com/auth/gmail.readonly",
-            "https://www.googleapis.com/auth/gmail.send",
-            "https://www.googleapis.com/auth/gmail.modify",
-            "https://www.googleapis.com/auth/gmail.labels"
-          ].join(" "),
-        });
-
-      toast.success('Establishing direct neural link...');
-      window.location.href = GOOGLE_AUTH_URL;
-    } catch (err: any) {
-      toast.error(err.message || 'Gmail connection failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const disconnectGmail = async () => {
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Authoritative cleanup: remove the credentials from gmail_accounts
-        await supabase.from('gmail_accounts').delete().eq('user_id', user.id);
-      }
-
-      // Clear session by signing out to ensure fresh tokens on next login
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      
-      setGmailConnected(false);
-      toast.success('Gmail session terminated. Re-auth required for fresh scopes.');
-      window.location.reload();
-    } catch (err: any) {
-      toast.error("Cleanup failed: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="space-y-8">
       <div>
@@ -166,7 +62,6 @@ export default function Settings() {
         <div className="w-full lg:w-64 flex flex-col gap-1 shrink-0 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm self-start">
           {[
             { id: 'supabase', label: 'Supabase Data', icon: Database },
-            { id: 'gmail', label: 'Gmail Logic', icon: Mail },
             { id: 'security', label: 'Security & RLS', icon: Shield },
             { id: 'profile', label: 'User Profile', icon: User },
             { id: 'company', label: 'Organization', icon: Building2 },
@@ -264,101 +159,6 @@ export default function Settings() {
                   <button className="text-sm font-bold text-slate-400 hover:text-slate-900 transition-colors underline-offset-4 hover:underline">
                     Restore Defaults
                   </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'gmail' && (
-            <div className="space-y-8 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-                    <Mail className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-lg text-slate-900">Gmail Ingestion Point</h2>
-                    <p className="text-slate-500 text-xs mt-0.5">Automated synchronization and resume extraction.</p>
-                  </div>
-                </div>
-                {gmailConnected ? (
-                  <span className="px-2.5 py-1 bg-green-100 text-green-700 border border-green-200 rounded-lg text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Connected
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-widest">
-                    Inactive
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-6">
-                <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col items-center text-center gap-4">
-                  {gmailConnected ? (
-                    <>
-                      <div className="w-16 h-16 rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-2">
-                        <Mail className="w-8 h-8" />
-                      </div>
-                      <h3 className="font-bold text-slate-900">Gmail Agent Active</h3>
-                      <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                        Currently monitoring <strong>{user?.email}</strong> for new resumes and client emails. Use the Agents dashboard to configure run frequency.
-                      </p>
-                      <button 
-                        onClick={disconnectGmail}
-                        className="mt-4 px-6 py-2 bg-white border border-red-200 text-red-600 rounded-xl font-bold text-sm hover:bg-red-50 transition-all"
-                      >
-                        Disconnect Integration
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-2">
-                        <Mail className="w-8 h-8" />
-                      </div>
-                      <h3 className="font-bold text-slate-900">Connect Gmail Workspace</h3>
-                      <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                        Grant read-only access to HireNest agents to enable autonomous resume harvesting and client follow-ups.
-                      </p>
-                      <button 
-                        onClick={connectGmail}
-                        disabled={loading}
-                        className="mt-4 flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
-                      >
-                        {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Mail className="w-5 h-5 fill-current" />}
-                        Authorize via Google
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-slate-50">
-                  <div className="bg-amber-50 border border-amber-200 p-6 rounded-[2rem] flex items-start gap-4">
-                    <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
-                    <div>
-                      <h5 className="text-sm font-black text-amber-900 uppercase tracking-tight">Step 1: Update Google Cloud Console</h5>
-                      <p className="text-xs text-amber-700 font-medium leading-relaxed mt-2">
-                        To link your Gmail, you MUST add this exact URI to your "Authorized redirect URIs" in the Google Cloud Console. 
-                        If you see an old app, it's because you are using a client ID associated with a different domain.
-                      </p>
-                      <div className="mt-4 flex items-center gap-3">
-                        <code className="px-4 py-2 bg-slate-900 text-indigo-400 rounded-xl text-[10px] font-mono break-all border border-slate-800 select-all">
-                          {window.location.origin}/auth/callback
-                        </code>
-                        <span className="text-[10px] font-black text-amber-700 uppercase tracking-widest border-b border-amber-300">Copy this exact URL</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-[2rem] flex items-start gap-4 mt-4">
-                    <Shield className="w-6 h-6 text-indigo-600 shrink-0" />
-                    <div>
-                      <h5 className="text-sm font-black text-indigo-900 uppercase tracking-tight">Step 2: Scopes & Verification</h5>
-                      <p className="text-xs text-indigo-700 font-medium leading-relaxed mt-2">
-                        Configure your app as "External" and add the `gmail.readonly` scope. This app is currently in a developer sandbox environment.
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -509,7 +309,7 @@ export default function Settings() {
             </div>
           )}
 
-          {activeTab !== 'supabase' && activeTab !== 'gmail' && activeTab !== 'security' && activeTab !== 'profile' && activeTab !== 'company' && (
+          {activeTab !== 'supabase' && activeTab !== 'security' && activeTab !== 'profile' && activeTab !== 'company' && (
             <div className="flex flex-col items-center justify-center h-full text-slate-400 p-20 border border-slate-100 border-dashed rounded-2xl">
               <SettingsIcon className="w-12 h-12 mb-4 opacity-10" />
               <p className="font-medium">{activeTab[0].toUpperCase() + activeTab.slice(1)} settings coming in next module.</p>

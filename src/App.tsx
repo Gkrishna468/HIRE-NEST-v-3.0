@@ -26,7 +26,6 @@ import FollowUps from './pages/FollowUps';
 import DealRoom from './pages/DealRoom';
 import ExecSuite from './pages/ExecSuite';
 import IntelligenceCenter from './pages/IntelligenceCenter';
-import { EmailCenter } from './pages/EmailCenter';
 import WhatsAppCenter from './pages/WhatsAppCenter';
 import CollaborationHub from './pages/CollaborationHub';
 import Marketplace from './pages/Marketplace';
@@ -34,6 +33,7 @@ import AgentChat from './pages/AgentChat';
 import AIMonitor from './pages/AIMonitor';
 import ActivityLogs from './pages/ActivityLogs';
 import Settings from './pages/Settings';
+import Integrations from './pages/Integrations';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import { cn } from '@/lib/utils';
@@ -59,8 +59,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-screen bg-slate-50 relative">
       <OnboardingTour />
       <Sidebar />
-      <main className={cn("flex-1 overflow-y-auto", (!['/email', '/whatsapp', '/agent-chat'].includes(location.pathname)) && "p-8 pt-6")}>
-        <div className={cn("mx-auto", ['/email', '/whatsapp', '/agent-chat'].includes(location.pathname) ? "w-full h-full" : "max-w-7xl")}>
+      <main className={cn("flex-1 overflow-y-auto", (!['/whatsapp', '/agent-chat'].includes(location.pathname)) && "p-8 pt-6")}>
+        <div className={cn("mx-auto", ['/whatsapp', '/agent-chat'].includes(location.pathname) ? "w-full h-full" : "max-w-7xl")}>
           <div className="flex justify-end mb-6">
             <NotificationHub />
           </div>
@@ -92,13 +92,13 @@ export default function App() {
             <Route path="/deal-room" element={<PrivateRoute><DealRoom /></PrivateRoute>} />
             <Route path="/exec-suite" element={<PrivateRoute><ExecSuite /></PrivateRoute>} />
             <Route path="/intelligence" element={<PrivateRoute><IntelligenceCenter /></PrivateRoute>} />
-            <Route path="/email" element={<PrivateRoute><EmailCenter /></PrivateRoute>} />
             <Route path="/whatsapp" element={<PrivateRoute><WhatsAppCenter /></PrivateRoute>} />
             <Route path="/marketplace" element={<PrivateRoute><Marketplace /></PrivateRoute>} />
             <Route path="/collaboration" element={<PrivateRoute><CollaborationHub /></PrivateRoute>} />
             <Route path="/agent-chat" element={<PrivateRoute><AgentChat /></PrivateRoute>} />
             <Route path="/ai-monitor" element={<PrivateRoute><AIMonitor /></PrivateRoute>} />
             <Route path="/activity" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />
+            <Route path="/integrations" element={<PrivateRoute><Integrations /></PrivateRoute>} />
             <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
             <Route path="/vendor" element={<Navigate to="/" />} />
             <Route path="/vendor/dashboard" element={<Navigate to="/" />} />
