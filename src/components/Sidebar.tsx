@@ -41,46 +41,51 @@ function hasAccess(userRole: string | undefined, allowedRoles: string[] | 'all')
 
 const menuGroups = [
   {
-    title: "Core System",
+    title: "Intelligence Layer",
     items: [
-      { icon: LayoutDashboard, label: 'Dashboard', path: '/', roles: 'all' },
-      { icon: Users, label: 'Candidate Pool', path: '/candidates', roles: ['recruiter', 'vendor', 'vendor_manager'] },
-      { icon: Briefcase, label: 'Job Requisitions', path: '/jobs', roles: 'all' },
-      { icon: Zap, label: 'Match Engine', path: '/ai-matching', roles: 'all' },
-      { icon: TrendingUp, label: 'Recruiter Pipeline', path: '/pipeline', roles: ['recruiter', 'client', 'client_manager'] },
-    ]
-  },
-  {
-    title: "AI System",
-    items: [
+      { icon: LayoutDashboard, label: 'Enterprise Hub', path: '/', roles: 'all' },
       { icon: BrainCircuit, label: 'Intelligence OS', path: '/intelligence', roles: ['recruiter'] },
-      { icon: FileText, label: 'Neural Parsing', path: '/resumes', roles: ['recruiter'] },
-      { icon: Activity, label: 'AI Monitor', path: '/ai-monitor', roles: ['recruiter'] },
       { icon: Cpu, label: 'Autonomous Agents', path: '/agents', roles: ['recruiter'] },
+      { icon: Activity, label: 'System Monitor', path: '/ai-monitor', roles: ['recruiter'] },
     ]
   },
   {
-    title: "Communication",
+    title: "Human Capital (HCM)",
     items: [
-      { icon: MessageSquare, label: 'WhatsApp Node', path: '/whatsapp', roles: ['recruiter'] },
+      { icon: Users, label: 'Talent Pool', path: '/candidates', roles: ['recruiter', 'vendor', 'vendor_manager'] },
+      { icon: Briefcase, label: 'Strategic Requisitions', path: '/jobs', roles: 'all' },
+      { icon: Zap, label: 'Talent Match AI', path: '/ai-matching', roles: 'all' },
+      { icon: TrendingUp, label: 'Workforce Pipeline', path: '/pipeline', roles: ['recruiter', 'client', 'client_manager'] },
     ]
   },
   {
-    title: "Marketplace",
+    title: "Supply Chain & B2B",
     items: [
-      { icon: Truck, label: 'Vendor Network', path: '/vendors', roles: ['recruiter'] },
-      { icon: Building2, label: 'Strategic Clients', path: '/clients', roles: ['recruiter'] },
-      { icon: Globe, label: 'Marketplace Dynamics', path: '/marketplace', roles: ['recruiter', 'vendor', 'vendor_manager'] },
-      { icon: Coins, label: 'Revenue Hub', path: '/deal-room', roles: ['recruiter'] },
+      { icon: Truck, label: 'Vendor Ecosystem', path: '/vendors', roles: ['recruiter'] },
+      { icon: Building2, label: 'Client Portfolios', path: '/clients', roles: ['recruiter'] },
+      { icon: Globe, label: 'B2B Marketplace', path: '/marketplace', roles: ['recruiter', 'vendor', 'vendor_manager'] },
     ]
   },
   {
-    title: "System",
+    title: "Finance & Treasury",
+    items: [
+      { icon: Coins, label: 'Revenue & Ledger', path: '/deal-room', roles: ['recruiter'] },
+    ]
+  },
+  {
+    title: "Operations",
+    items: [
+      { icon: MessageSquare, label: 'Comms Gateway', path: '/whatsapp', roles: ['recruiter'] },
+      { icon: Mail, label: 'Neural Inbox', path: '/emails', roles: ['recruiter'] },
+      { icon: Puzzle, label: 'Plugins & Connectors', path: '/integrations', roles: 'all' },
+    ]
+  },
+  {
+    title: "Enterprise Settings",
     items: [
       { icon: ShieldCheck, label: 'Command Center', path: '/exec-suite', roles: [] },
-      { icon: History, label: 'Activity Logs', path: '/activity', roles: [] },
-      { icon: Puzzle, label: 'Plugins & Connectors', path: '/integrations', roles: 'all' },
-      { icon: Settings, label: 'OS Settings', path: '/settings', roles: 'all' },
+      { icon: History, label: 'Audit Logs', path: '/activity', roles: [] },
+      { icon: Settings, label: 'ERP Architecture', path: '/settings', roles: 'all' },
     ]
   }
 ];

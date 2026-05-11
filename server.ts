@@ -265,6 +265,57 @@ async function startServer() {
     }
   });
 
+  app.post("/api/google/refresh", async (req, res) => {
+    try {
+      const { userId } = req.body;
+      if (!userId) return res.status(400).json({ error: "userId required" });
+
+      const { data: account } = await supabase
+        .from("integrations")
+        .select("refresh_token")
+        .eq("user_id", userId)
+        .eq("provider", "google")
+        .single();
+
+      if (!account || !account.refresh_token) {
+        return res.status(404).json({ error: "No refresh token available" });
+      }
+
+      // Refresh using Google OAuth endpoint
+      const response = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: process.env.VITE_SUPABASE_GOOGLE_CLIENT_ID || "",
+          client_secret: process.env.SUPABASE_GOOGLE_CLIENT_SECRET || "",
+          refresh_token: account.refresh_token,
+          grant_type: "refresh_token",
+        }),
+      });
+
+      if (!response.ok) {
+        const errDesc = await response.json();
+        return res.status(response.status).json(errDesc);
+      }
+
+      const { access_token, expires_in } = await response.json();
+
+      await supabase
+        .from("integrations")
+        .update({
+          access_token,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .eq("provider", "google");
+
+      res.json({ access_token });
+    } catch (err) {
+      console.error("Refresh token error:", err);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
   // 5. HEALTH CHECK & MAINTENANCE
   app.get("/api/health", (req, res) => {
     res.json({ 

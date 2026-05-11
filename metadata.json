@@ -1,11 +1,12 @@
 {
-  "name": "Remix: HireNest: Neural Agency OS",
-  "description": "High-velocity recruitment platform with Pulse Discovery, AI Briefing Agents, and Neural Revenue Forecasting.",
+  "name": "HireNest Enterprise: Unified ERP",
+  "description": "Enterprise-grade ERP with Neural Intelligence, unified Human Capital management, Finance Treasury, and B2B Supply Chain orchestration.",
   "requestFramePermissions": [],
   "majorCapabilities": [
-    "recruitment",
-    "ai-agents",
-    "workflow-automation",
-    "marketplace"
+    "erp",
+    "hrm",
+    "finance",
+    "supply-chain",
+    "ai-intelligence"
   ]
 }

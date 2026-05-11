@@ -14,9 +14,10 @@ import { JobType, enqueueJob } from "./queueService";
 
 async function getAuthoritativeToken(userId: string) {
   const { data: gmailAccount } = await supabase
-    .from('gmail_accounts')
+    .from('integrations')
     .select('access_token, refresh_token, updated_at')
     .eq('user_id', userId)
+    .eq('provider', 'google')
     .single();
 
   if (!gmailAccount) return null;
@@ -61,9 +62,10 @@ export async function syncGmailInbox(force: boolean = false) {
     console.log("USER:", userId);
 
     const { data: accountInfo } = await supabase
-      .from('gmail_accounts')
+      .from('integrations')
       .select('*')
       .eq('user_id', userId)
+      .eq('provider', 'google')
       .single();
 
     console.log("ACCOUNT:", accountInfo);
@@ -74,7 +76,7 @@ export async function syncGmailInbox(force: boolean = false) {
     const token = await getAuthoritativeToken(userId);
 
     if (!token) {
-      throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
+      throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize under 'Neural Inbox' or 'Manage Plugins'.");
     }
 
     // 1. Fetch recent messages
@@ -99,7 +101,7 @@ export async function syncGmailInbox(force: boolean = false) {
     if (!listData.messages || listData.messages.length === 0) {
       console.log("[Gmail Sync] No signals detected in the stream.");
       console.log("SETTING STATUS READY");
-      await supabase.from("gmail_accounts").update({ sync_status: "READY" }).eq("user_id", userId);
+      await supabase.from("integrations").update({ metadata: { sync_status: "READY" } }).eq("user_id", userId).eq("provider", "google");
       return { count: 0, message: "Inbox is optimized and quiet." };
     }
 
@@ -224,7 +226,7 @@ export async function syncGmailInbox(force: boolean = false) {
     console.log(`[Gmail Sync] Finished. Synced: ${syncCount}. Errors: ${errorCount}.`);
     
     console.log("SETTING STATUS READY");
-    await supabase.from("gmail_accounts").update({ sync_status: "READY" }).eq("user_id", userId);
+    await supabase.from("integrations").update({ metadata: { sync_status: "READY" } }).eq("user_id", userId).eq("provider", "google");
 
     return { 
       count: syncCount, 
@@ -232,15 +234,20 @@ export async function syncGmailInbox(force: boolean = false) {
       message: syncCount > 0 ? `Mirrored ${syncCount} signals from neural network.` : "No new messages signals detected."
     };
   } catch (err: any) {
-    console.error("SYNC FAILURE:", err);
+    if (err?.message && !err.message.includes("GMAIL_NOT_CONNECTED")) {
+      console.error("SYNC FAILURE:", err);
+    }
     await supabase
-      .from("gmail_accounts")
+      .from("integrations")
       .update({
-        sync_status: "ERROR",
-        last_error: err?.message || String(err),
+        metadata: {
+          sync_status: "ERROR",
+          last_error: err?.message || String(err)
+        },
         updated_at: new Date().toISOString()
       })
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("provider", "google");
     
     throw err;
   }
@@ -295,7 +302,7 @@ export async function sendEmailReply(threadId: string, to: string, subject: stri
 
   const token = await getAuthoritativeToken(userId);
 
-  if (!token) throw new Error("GMAIL_NOT_CONNECTED");
+  if (!token) throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize under 'Neural Inbox' or 'Manage Plugins'.");
 
   // Gmail API expects a base64url encoded string of the raw MIME email
   const utf8Encode = new TextEncoder();
@@ -360,7 +367,7 @@ export async function sendNewEmail(to: string, subject: string, body: string) {
 
   const token = await getAuthoritativeToken(userId);
 
-  if (!token) throw new Error("GMAIL_NOT_CONNECTED");
+  if (!token) throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize under 'Neural Inbox' or 'Manage Plugins'.");
 
   const emailRaw = [
     `To: ${to}`,
@@ -418,7 +425,7 @@ export async function syncGmailResumes() {
   const token = await getAuthoritativeToken(userId);
 
   if (!token) {
-    throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
+    throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize under 'Neural Inbox' or 'Manage Plugins'.");
   }
 
   // 1. Fetch messages with resume-like attachments
@@ -496,7 +503,7 @@ export async function setupGmailWatch() {
   const token = await getAuthoritativeToken(userId);
 
   if (!token) {
-    throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize via Settings.");
+    throw new Error("GMAIL_NOT_CONNECTED: Please re-authorize under 'Neural Inbox' or 'Manage Plugins'.");
   }
 
   // NOTE: You must replace 'YOUR_PROJECT_ID' with your actual Google Cloud Project ID

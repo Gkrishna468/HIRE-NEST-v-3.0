@@ -53,24 +53,27 @@ export default function AuthCallback() {
         const syncStatus = refreshToken ? "READY" : "ERROR";
 
         const { error: upsertError } = await supabase
-          .from("gmail_accounts")
+          .from("integrations")
           .upsert({
             user_id: session.user.id,
-            gmail_email: gmailEmail,
+            provider: 'google',
             access_token: accessToken,
             refresh_token: refreshToken,
-            connected: true,
-            sync_status: syncStatus,
+            metadata: { 
+              gmail_email: gmailEmail,
+              connected: true,
+              sync_status: syncStatus
+            },
             updated_at: new Date().toISOString()
           }, {
-            onConflict: "user_id"
+            onConflict: "user_id,provider"
           });
 
         if (upsertError) {
           console.error("UPSERT ERROR:", upsertError);
           toast.error("Failed to persist Gmail credentials.");
         } else {
-          console.log("GMAIL_ACCOUNT PERSISTED SUCCESSFULLY - STATUS:", syncStatus);
+          console.log("INTEGRATION PERSISTED SUCCESSFULLY - STATUS:", syncStatus);
           if (syncStatus === "ERROR") {
             toast.error("Critical: Google failed to provide a Refresh Token. Re-link with consent.");
           } else {
@@ -79,7 +82,7 @@ export default function AuthCallback() {
         }
 
         // Redirect to email center for immediate sync
-        navigate('/email');
+        navigate('/emails');
       } catch (err: any) {
         console.error("Auth error:", err);
         toast.error("Auth failed: " + err.message);

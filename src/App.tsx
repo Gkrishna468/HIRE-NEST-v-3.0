@@ -36,6 +36,7 @@ import Settings from './pages/Settings';
 import Integrations from './pages/Integrations';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
+import EmailCenter from './pages/EmailCenter';
 import { cn } from '@/lib/utils';
 
 import ClientDashboard from './pages/ClientDashboard';
@@ -93,6 +94,7 @@ export default function App() {
             <Route path="/exec-suite" element={<PrivateRoute><ExecSuite /></PrivateRoute>} />
             <Route path="/intelligence" element={<PrivateRoute><IntelligenceCenter /></PrivateRoute>} />
             <Route path="/whatsapp" element={<PrivateRoute><WhatsAppCenter /></PrivateRoute>} />
+            <Route path="/emails" element={<PrivateRoute><EmailCenter /></PrivateRoute>} />
             <Route path="/marketplace" element={<PrivateRoute><Marketplace /></PrivateRoute>} />
             <Route path="/collaboration" element={<PrivateRoute><CollaborationHub /></PrivateRoute>} />
             <Route path="/agent-chat" element={<PrivateRoute><AgentChat /></PrivateRoute>} />

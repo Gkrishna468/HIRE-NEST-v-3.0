@@ -1,0 +1,11 @@
+# AI Coding Agent Guidelines
+
+1. You must ALWAYS use type-safe TypeScript interfaces and types, never `any` unless absolutely necessary.
+2. Follow strict layout consistency with Tailwind CSS. Maintain responsive design on every component.
+3. Keep `package.json` clean and only add what's necessary.
+4. Implement solid error boundaries to protect the application from unhandled component crashes.
+5. Create a solid file structure with separation of concerns.
+6. Use standard logging structures (like the Central `supabase` / `agent_logs` mechanism).
+7. Ensure performance by preventing unneeded re-renders. Use `useMemo` and `useCallback`.
+8. Check types with TS server on every change and keep it clear.
+9. Verify layout changes locally, ensure everything works without errors.

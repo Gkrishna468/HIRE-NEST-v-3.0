@@ -41,7 +41,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { proposeCollaboration } from '@/services/marketplaceService';
-import { syncGmailResumes } from '@/services/gmailService';
+import { syncGmailResumes, syncGmailInbox } from '@/services/gmailService';
 import { discoverIntentLeads, getWarmLeads, DiscoveryLead } from '@/services/discoveryService';
 import { logBillingEvent, PRICING_LOGIC } from '@/lib/billing';
 
@@ -217,8 +217,9 @@ export default function IntelligenceCenter() {
 
   async function handleGmailSync() {
     setSyncing(true);
-    toast.info('Accessing Neural Gmail Node...', { icon: <Mail className="animate-bounce" /> });
+    toast.info('Accessing Neural Gmail Node & Inbox Engine...', { icon: <Mail className="animate-bounce" /> });
     try {
+      const inboxResult = await syncGmailInbox(false); // don't force full pull from scratch, just deltas
       const result = await syncGmailResumes();
       
       // Log Billing Events for parsed resumes
@@ -229,11 +230,18 @@ export default function IntelligenceCenter() {
         metadata: { count: 5 }
       });
 
-      toast.success(result.message);
+      toast.success(`${inboxResult.count} new emails processed. ${result.message}`);
       await fetchOutreachLogs();
       fetchRevenueMetrics();
     } catch (err: any) {
-      toast.error(err.message || "Gmail sync failed");
+      if (err.message && err.message.includes('GMAIL_NOT_CONNECTED')) {
+        toast.error(
+          'Workspace Mail not linked. Connect your Google account via Neural Inbox or Manage Plugins in Operations to activate this node.',
+          { duration: 8000 }
+        );
+      } else {
+        toast.error(err.message || "Gmail sync failed");
+      }
     } finally {
       setSyncing(false);
     }
