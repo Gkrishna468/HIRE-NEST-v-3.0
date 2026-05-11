@@ -70,8 +70,8 @@ export default function AuthCallback() {
           });
 
         if (upsertError) {
-          console.error("UPSERT ERROR:", upsertError);
-          toast.error("Failed to persist Gmail credentials.");
+          console.error("UPSERT ERROR FULL DETAILS:", JSON.stringify(upsertError, null, 2));
+          toast.error(`Failed to persist Gmail credentials: ${upsertError.message}`);
         } else {
           console.log("INTEGRATION PERSISTED SUCCESSFULLY - STATUS:", syncStatus);
           if (syncStatus === "ERROR") {

@@ -46,7 +46,7 @@ export default function Login() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'https://crm.hirenestworkforce.com/auth/callback',
+          redirectTo: window.location.origin + '/#/auth/callback',
           scopes: 'openid email profile'
         }
       });

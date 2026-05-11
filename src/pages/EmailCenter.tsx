@@ -85,7 +85,7 @@ export default function EmailCenter() {
         provider: 'google',
         options: {
           scopes: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify',
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: window.location.origin + '/#/auth/callback',
           queryParams: {
             access_type: 'offline',
             prompt: 'consent'
